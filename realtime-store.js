@@ -4,10 +4,10 @@ import {
   isFirebaseConfigured,
 } from "./firebase-config.js";
 
-const GAME_KEY = "mattelutong.quiz.active-game";
-const ANSWERS_KEY = "mattelutong.quiz.answers";
-const PLAYER_KEY = "mattelutong.quiz.player-id";
-const CHANNEL_NAME = "mattelutong-quiz-sync";
+const GAME_KEY = "matteluyong.quiz.active-game";
+const ANSWERS_KEY = "matteluyong.quiz.answers";
+const PLAYER_KEY = "matteluyong.quiz.player-id";
+const CHANNEL_NAME = "matteluyong-quiz-sync";
 
 function readJson(key, fallback) {
   try {

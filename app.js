@@ -1,7 +1,7 @@
 import { getQuizVersion } from "./quiz-data.js";
 import { createQuizClient } from "./realtime-store.js";
 
-const PLAYER_NAME_KEY = "mattelutong.quiz.player-name";
+const PLAYER_NAME_KEY = "matteluyong.quiz.player-name";
 
 const elements = {
   connectionBadge: document.querySelector("#connection-badge"),

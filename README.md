@@ -45,8 +45,8 @@ GitHub Pages는 정적 웹 호스팅이므로, 서로 다른 휴대폰의 참가
 2. Authentication에서 **익명 로그인**과 **이메일/비밀번호 로그인**을 켭니다.
 3. 웹 앱 설정값을 [firebase-config.js](firebase-config.js)에 넣고, 이메일/비밀번호로 만든
    관리자 계정의 UID를 `firebaseAdminUid`에 넣습니다.
-4. [database.rules.json](database.rules.json)의 `REPLACE_WITH_ADMIN_UID`를 같은 UID로 바꾼 뒤,
-   Firebase Realtime Database의 Rules 화면에 붙여 넣어 배포합니다.
+4. [database.rules.json](database.rules.json)을 Firebase Realtime Database의 Rules 화면에 붙여 넣어
+   배포합니다. 관리자 계정을 바꾸는 경우에만 파일의 관리자 UID도 새 UID로 변경합니다.
 5. 변경한 파일을 GitHub에 푸시하면 모든 기기에서 같은 시작 시각, 문제 순서, 타이머를 공유합니다.
 
 `firebase-config.js`의 웹 설정값은 브라우저에 공개되어도 되는 식별 정보입니다. 대신 관리자 UID와
