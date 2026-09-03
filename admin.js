@@ -1,4 +1,9 @@
-import { defaultQuizVersionId, getQuizVersion, quizVersions } from "./quiz-data.js";
+import {
+  calculateAnswerScore,
+  defaultQuizVersionId,
+  getQuizVersion,
+  quizVersions,
+} from "./quiz-data.js";
 import { createGameId, createQuizClient } from "./realtime-store.js";
 
 const elements = {
@@ -27,6 +32,9 @@ const elements = {
   monitorTimerBar: document.querySelector("#monitor-timer-bar"),
   monitorQuestion: document.querySelector("#monitor-question"),
   answerCount: document.querySelector("#answer-count"),
+  scoreboardCount: document.querySelector("#scoreboard-count"),
+  scoreboardBody: document.querySelector("#scoreboard-body"),
+  scoreboardEmpty: document.querySelector("#scoreboard-empty"),
 };
 
 let client;
@@ -97,6 +105,72 @@ function countCurrentAnswers(questionIndex) {
   return Object.keys(activeAnswers).filter(function (playerId) {
     return Boolean(activeAnswers[playerId] && activeAnswers[playerId][questionIndex]);
   }).length;
+}
+
+function getLeaderboard() {
+  const version = activeGame && activeGame.id ? getQuizVersion(activeGame.versionId) : null;
+  if (!version) {
+    return [];
+  }
+
+  return Object.keys(activeAnswers).map(function (playerId) {
+    const playerAnswers = activeAnswers[playerId] || {};
+    let playerName = "참가자";
+    let score = 0;
+    let correct = 0;
+
+    version.questions.forEach(function (question, index) {
+      const answer = playerAnswers[String(index)];
+      if (!answer) {
+        return;
+      }
+
+      if (answer.playerName) {
+        playerName = answer.playerName;
+      }
+      score += calculateAnswerScore(answer, question, activeGame, index);
+      if (answer.choice === question.correctIndex) {
+        correct += 1;
+      }
+    });
+
+    return {
+      id: playerId,
+      name: playerName,
+      score: score,
+      correct: correct,
+    };
+  }).sort(function (first, second) {
+    if (second.score !== first.score) {
+      return second.score - first.score;
+    }
+    if (second.correct !== first.correct) {
+      return second.correct - first.correct;
+    }
+    return first.name.localeCompare(second.name, "ko");
+  });
+}
+
+function renderScoreboard() {
+  const leaderboard = getLeaderboard();
+  elements.scoreboardCount.textContent = leaderboard.length.toLocaleString("ko-KR") + "명";
+  elements.scoreboardCount.className = "state-badge " + (leaderboard.length ? "live" : "waiting");
+  elements.scoreboardBody.replaceChildren();
+  elements.scoreboardEmpty.hidden = leaderboard.length > 0;
+
+  leaderboard.forEach(function (player, index) {
+    const row = document.createElement("tr");
+    const rank = document.createElement("td");
+    const name = document.createElement("td");
+    const correct = document.createElement("td");
+    const score = document.createElement("td");
+    rank.textContent = String(index + 1);
+    name.textContent = player.name;
+    correct.textContent = player.correct + " / 4";
+    score.textContent = player.score.toLocaleString("ko-KR") + "점";
+    row.append(rank, name, correct, score);
+    elements.scoreboardBody.append(row);
+  });
 }
 
 function renderMonitor() {
@@ -201,10 +275,12 @@ function showDashboard() {
       unsubscribeAnswers = client.subscribeAllAnswers(activeGame.id, function (answers) {
         activeAnswers = answers || {};
         renderMonitor();
+        renderScoreboard();
       });
     }
 
     renderMonitor();
+    renderScoreboard();
   });
 }
 

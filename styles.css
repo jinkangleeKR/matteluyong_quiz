@@ -491,6 +491,10 @@ input::placeholder {
   grid-column: 2;
 }
 
+.scores-section {
+  grid-column: 1 / -1;
+}
+
 .section-heading {
   margin-bottom: 23px;
 }
@@ -710,6 +714,73 @@ input::placeholder {
   font-size: 0.77rem;
 }
 
+.scoreboard-help {
+  margin: -7px 0 16px;
+  color: #887d71;
+  font-size: 0.79rem;
+}
+
+.scoreboard-wrap {
+  overflow: hidden;
+  border: 1px solid #ece3d8;
+  border-radius: 14px;
+}
+
+.scoreboard-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.scoreboard-table th,
+.scoreboard-table td {
+  padding: 13px 15px;
+  text-align: left;
+  border-bottom: 1px solid #f0e8de;
+}
+
+.scoreboard-table th {
+  color: #95877a;
+  background: #fdfaf5;
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.scoreboard-table td:first-child {
+  width: 68px;
+  color: #a46d28;
+  font-family: Outfit, sans-serif;
+  font-weight: 700;
+}
+
+.scoreboard-table td:nth-child(3) {
+  color: #796e63;
+}
+
+.scoreboard-table td:last-child {
+  color: #c55d28;
+  font-family: Outfit, sans-serif;
+  font-size: 0.98rem;
+  font-weight: 700;
+  text-align: right;
+}
+
+.scoreboard-table th:last-child {
+  text-align: right;
+}
+
+.scoreboard-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.scoreboard-empty {
+  margin: 0;
+  padding: 30px 15px;
+  color: #968c82;
+  font-size: 0.84rem;
+  text-align: center;
+}
+
 .login-section {
   width: min(100%, 430px);
   margin: 42px auto;
@@ -732,7 +803,8 @@ input::placeholder {
   }
 
   .setup-section,
-  .questions-section {
+  .questions-section,
+  .scores-section {
     grid-column: auto;
     grid-row: auto;
   }

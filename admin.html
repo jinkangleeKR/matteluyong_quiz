@@ -116,6 +116,31 @@
           </div>
           <ol id="question-plan" class="question-plan"></ol>
         </section>
+
+        <section class="admin-section scores-section">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">LIVE SCOREBOARD</p>
+              <h2>참가자 점수</h2>
+            </div>
+            <span id="scoreboard-count" class="state-badge waiting">0명</span>
+          </div>
+          <p class="scoreboard-help">제출·변경된 최종 답안을 기준으로 점수가 즉시 계산됩니다.</p>
+          <div class="scoreboard-wrap">
+            <table class="scoreboard-table">
+              <thead>
+                <tr>
+                  <th scope="col">순위</th>
+                  <th scope="col">참가자</th>
+                  <th scope="col">정답</th>
+                  <th scope="col">점수</th>
+                </tr>
+              </thead>
+              <tbody id="scoreboard-body"></tbody>
+            </table>
+            <p id="scoreboard-empty" class="scoreboard-empty">아직 답안을 제출한 참가자가 없습니다.</p>
+          </div>
+        </section>
       </div>
     </main>
 

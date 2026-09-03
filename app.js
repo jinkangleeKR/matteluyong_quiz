@@ -1,4 +1,4 @@
-import { getQuizVersion } from "./quiz-data.js";
+import { calculateAnswerScore, getQuizVersion } from "./quiz-data.js";
 import { createQuizClient } from "./realtime-store.js";
 
 const PLAYER_NAME_KEY = "matteluyong.quiz.player-name";
@@ -27,6 +27,7 @@ let activeGame = { status: "waiting" };
 let ownAnswers = {};
 let unsubscribeAnswers = function () {};
 let renderedScreen = "";
+let isSubmittingAnswer = false;
 
 elements.playerName.value = window.localStorage.getItem(PLAYER_NAME_KEY) || "";
 elements.playerName.addEventListener("input", function () {
@@ -78,28 +79,13 @@ function getPhase(game) {
   };
 }
 
-function scoreAnswer(answer, question, game, questionIndex) {
-  if (!answer || answer.choice !== question.correctIndex) {
-    return 0;
-  }
-
-  const durationMs = Number(game.questionDurationSec) * 1000;
-  const submittedAt = Number(answer.answeredAt);
-  const questionStartedAt = Number(game.startAt) + questionIndex * durationMs;
-  const elapsed = Math.min(durationMs, Math.max(0, submittedAt - questionStartedAt));
-  const base = Number(game.basePoints) || 0;
-  const speed = Number(game.speedPoints) || 0;
-
-  return base + Math.ceil(speed * (1 - elapsed / durationMs));
-}
-
 function getScore(game, version) {
   let total = 0;
   let correct = 0;
 
   version.questions.forEach(function (question, index) {
-    const answer = ownAnswers[index];
-    const gained = scoreAnswer(answer, question, game, index);
+    const answer = ownAnswers[String(index)];
+    const gained = calculateAnswerScore(answer, question, game, index);
     total += gained;
     if (gained > 0) {
       correct += 1;
@@ -136,13 +122,14 @@ function renderQuestion(phase) {
   setVisible("question");
   elements.questionCount.textContent = "문제 " + (phase.questionIndex + 1) + " / " + phase.version.questions.length;
   elements.questionText.textContent = phase.question.prompt;
+  // 문항별로 버튼을 새로 만들기 때문에 이전 문항의 선택 색상은 절대 남지 않습니다.
   elements.answerOptions.replaceChildren();
 
-  const submittedAnswer = ownAnswers[phase.questionIndex];
+  const submittedAnswer = ownAnswers[String(phase.questionIndex)];
   if (submittedAnswer) {
-    elements.answerMessage.textContent = "답안을 제출했습니다. 다음 문제를 기다려 주세요.";
+    elements.answerMessage.textContent = "선택한 답은 변경할 수 있어요. 시간이 끝나기 전 최종 답이 제출됩니다.";
   } else {
-    elements.answerMessage.textContent = "답은 한 번만 제출할 수 있습니다.";
+    elements.answerMessage.textContent = "시간 안에는 답을 바꿀 수 있습니다.";
   }
 
   phase.question.options.forEach(function (option, index) {
@@ -156,16 +143,13 @@ function renderQuestion(phase) {
     button.type = "button";
     button.append(marker, text);
 
-    if (submittedAnswer) {
-      button.disabled = true;
-      if (submittedAnswer.choice === index) {
-        button.classList.add("selected");
-      }
-    } else {
-      button.addEventListener("click", function () {
-        submitAnswer(phase.questionIndex, index);
-      });
+    if (submittedAnswer && submittedAnswer.choice === index) {
+      button.classList.add("selected");
     }
+
+    button.addEventListener("click", function () {
+      submitAnswer(phase.questionIndex, index);
+    });
 
     elements.answerOptions.append(button);
   });
@@ -193,7 +177,7 @@ function updateTimer(phase) {
 
 function render() {
   const phase = getPhase(activeGame);
-  const answer = phase.state === "question" ? ownAnswers[phase.questionIndex] : null;
+  const answer = phase.state === "question" ? ownAnswers[String(phase.questionIndex)] : null;
   const screenKey = [
     activeGame.id || "waiting",
     phase.state,
@@ -217,27 +201,32 @@ function render() {
 
 async function submitAnswer(questionIndex, choice) {
   const phase = getPhase(activeGame);
-  if (phase.state !== "question" || phase.questionIndex !== questionIndex || ownAnswers[questionIndex]) {
+  const currentAnswer = ownAnswers[String(questionIndex)];
+  if (phase.state !== "question" || phase.questionIndex !== questionIndex || isSubmittingAnswer) {
+    return;
+  }
+
+  if (currentAnswer && currentAnswer.choice === choice) {
+    elements.answerMessage.textContent = "현재 선택한 답입니다. 다른 답을 눌러 변경할 수 있어요.";
     return;
   }
 
   const savedName = window.localStorage.getItem(PLAYER_NAME_KEY) || "";
   const playerName = savedName.trim() || "참가자";
-  elements.answerMessage.textContent = "답안을 제출하는 중이에요…";
+  elements.answerMessage.textContent = currentAnswer ? "답안을 변경하는 중이에요…" : "답안을 제출하는 중이에요…";
+  isSubmittingAnswer = true;
 
   try {
-    const saved = await client.submitAnswer({
+    await client.submitAnswer({
       gameId: activeGame.id,
       questionIndex: questionIndex,
       choice: choice,
       playerName: playerName,
     });
-
-    if (!saved) {
-      elements.answerMessage.textContent = "이미 제출한 답안입니다.";
-    }
   } catch (error) {
-    elements.answerMessage.textContent = "답안 제출에 실패했어요. 연결 상태를 확인해 주세요.";
+    elements.answerMessage.textContent = "답안 변경에 실패했어요. 연결 상태를 확인해 주세요.";
+  } finally {
+    isSubmittingAnswer = false;
   }
 }
 

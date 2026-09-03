@@ -10,7 +10,7 @@
         "$uid": {
           ".read": "auth != null && (auth.uid === $uid || auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2')",
           "$questionIndex": {
-            ".write": "auth != null && auth.uid === $uid && !data.exists() && newData.hasChildren(['choice', 'playerName', 'answeredAt'])",
+            ".write": "auth != null && auth.uid === $uid && newData.hasChildren(['choice', 'playerName', 'answeredAt'])",
             ".validate": "newData.child('choice').isNumber() && newData.child('choice').val() >= 0 && newData.child('choice').val() <= 3 && newData.child('playerName').isString() && newData.child('playerName').val().length <= 20 && newData.child('answeredAt').isNumber()"
           }
         }

@@ -158,10 +158,6 @@ function createDemoClient(notice) {
       const gameAnswers = allAnswers[answer.gameId] || {};
       const playerAnswers = gameAnswers[playerId] || {};
 
-      if (playerAnswers[answer.questionIndex]) {
-        return false;
-      }
-
       playerAnswers[answer.questionIndex] = {
         choice: answer.choice,
         playerName: answer.playerName,
@@ -270,11 +266,6 @@ async function createFirebaseClient(role) {
         database,
         "answers/" + answer.gameId + "/" + user.uid + "/" + answer.questionIndex
       );
-      const existing = await databaseModule.get(answerRef);
-
-      if (existing.exists()) {
-        return false;
-      }
 
       await databaseModule.set(answerRef, {
         choice: answer.choice,
