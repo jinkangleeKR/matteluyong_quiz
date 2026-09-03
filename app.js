@@ -128,11 +128,23 @@ function getResultRevealState() {
   return { state: "revealed" };
 }
 
+function getAnswerKeyEntry(answerKey, index) {
+  if (Array.isArray(answerKey)) { return answerKey[index]; }
+  if (answerKey && typeof answerKey === "object") { return answerKey[String(index)] || answerKey[index]; }
+  return null;
+}
+
+function getAnswerList(value) {
+  if (Array.isArray(value)) { return value; }
+  if (value && typeof value === "object") { return Object.values(value); }
+  return typeof value === "string" ? [value] : [];
+}
+
 function questionForScoring(question, index) {
   const answerKey = room && room.revealedAnswerKey;
-  const key = Array.isArray(answerKey) ? answerKey[index] : null;
+  const key = getAnswerKeyEntry(answerKey, index);
   if (isShortAnswerQuestion(question)) {
-    const acceptedAnswers = Array.isArray(key) ? key : key && Array.isArray(key.acceptedAnswers) ? key.acceptedAnswers : [];
+    const acceptedAnswers = getAnswerList(key && typeof key === "object" && !Array.isArray(key) ? key.acceptedAnswers : key);
     return Object.assign({}, question, { type: "short-answer", acceptedAnswers: acceptedAnswers });
   }
   const correctIndex = typeof key === "number" ? key : key && Number.isFinite(Number(key.correctIndex)) ? Number(key.correctIndex) : -1;
@@ -202,7 +214,11 @@ function renderQuestion(phase) {
     if (!shortAnswer && draftChoice === null && Number.isFinite(Number(submitted.choice))) { draftChoice = Number(submitted.choice); }
   }
   const hasDraftAnswer = shortAnswer ? Boolean(draftText.trim()) : draftChoice !== null;
-  const normalizeText = function (value) { return String(value || "").trim().toLocaleLowerCase("ko-KR").replace(/\s+/g, ""); };
+  const normalizeText = function (value) {
+    const text = String(value || "");
+    const composed = typeof text.normalize === "function" ? text.normalize("NFC") : text;
+    return composed.trim().toLocaleLowerCase("ko-KR").replace(/[\s\u200B-\u200D\uFEFF]+/g, "");
+  };
   const isChanging = submitted && (shortAnswer ? normalizeText(draftText) !== normalizeText(submitted.text) : draftChoice !== submitted.choice);
   elements.submitAnswer.disabled = !hasDraftAnswer || isSubmittingAnswer || Boolean(submitted && !isChanging);
   elements.submitAnswer.textContent = submitted ? (isChanging ? "변경한 답 제출하기" : "제출한 답") : "답안 제출하기";

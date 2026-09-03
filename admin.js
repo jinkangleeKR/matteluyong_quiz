@@ -152,11 +152,23 @@ function createPublicQuizSnapshot(quiz) {
   };
 }
 
+function getAnswerKeyEntry(answerKey, index) {
+  if (Array.isArray(answerKey)) { return answerKey[index]; }
+  if (answerKey && typeof answerKey === "object") { return answerKey[String(index)] || answerKey[index]; }
+  return null;
+}
+
+function getAnswerList(value) {
+  if (Array.isArray(value)) { return value; }
+  if (value && typeof value === "object") { return Object.values(value); }
+  return typeof value === "string" ? [value] : [];
+}
+
 function questionForScoring(question, index) {
   const answerKey = activeRoomSecret && activeRoomSecret.answerKey;
-  const key = Array.isArray(answerKey) ? answerKey[index] : null;
+  const key = getAnswerKeyEntry(answerKey, index);
   if (isShortAnswerQuestion(question)) {
-    const acceptedAnswers = Array.isArray(key) ? key : key && Array.isArray(key.acceptedAnswers) ? key.acceptedAnswers : [];
+    const acceptedAnswers = getAnswerList(key && typeof key === "object" && !Array.isArray(key) ? key.acceptedAnswers : key);
     return Object.assign({}, question, { type: "short-answer", acceptedAnswers: acceptedAnswers });
   }
   const correctIndex = typeof key === "number" ? key : key && Number.isFinite(Number(key.correctIndex)) ? Number(key.correctIndex) : -1;
@@ -496,7 +508,7 @@ function renderResultRevealControl(phase) {
     elements.reveal.disabled = true;
     return;
   }
-  const hasAnswerKey = Boolean(activeRoomSecret && Array.isArray(activeRoomSecret.answerKey));
+  const hasAnswerKey = Boolean(activeRoomSecret && activeRoomSecret.answerKey && Object.keys(activeRoomSecret.answerKey).length);
   elements.reveal.textContent = hasAnswerKey ? "결과 공개 (3초 카운트)" : "정답 정보 불러오는 중";
   elements.reveal.disabled = phase.state !== "finished" || isRevealing || !hasAnswerKey;
 }
@@ -677,11 +689,11 @@ async function createRoom() {
       resultsRevealAt: null,
       revealedAnswerKey: null,
     }, {
-      answerKey: quiz.questions.map(function (question) {
-        return isShortAnswerQuestion(question)
+      answerKey: Object.fromEntries(quiz.questions.map(function (question, index) {
+        return [String(index), isShortAnswerQuestion(question)
           ? { type: "short-answer", acceptedAnswers: question.acceptedAnswers }
-          : { type: "multiple-choice", correctIndex: question.correctIndex };
-      }),
+          : { type: "multiple-choice", correctIndex: question.correctIndex }];
+      })),
     });
     elements.roomSetupMessage.textContent = "새 게임방을 만들었습니다. QR 코드 또는 링크를 공유하세요.";
     selectRoom(state.id);

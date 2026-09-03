@@ -1,5 +1,7 @@
 function normalizeShortAnswer(value) {
-  return String(value || "").trim().toLocaleLowerCase("ko-KR").replace(/\s+/g, "");
+  const text = String(value || "");
+  const composed = typeof text.normalize === "function" ? text.normalize("NFC") : text;
+  return composed.trim().toLocaleLowerCase("ko-KR").replace(/[\s\u200B-\u200D\uFEFF]+/g, "");
 }
 
 export function isShortAnswerQuestion(question) {
