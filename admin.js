@@ -23,6 +23,7 @@ const elements = {
   questionPlan: document.querySelector("#question-plan"),
   start: document.querySelector("#start-game"),
   stop: document.querySelector("#stop-game"),
+  revealResults: document.querySelector("#reveal-results"),
   reset: document.querySelector("#reset-game"),
   actionMessage: document.querySelector("#admin-action-message"),
   stateBadge: document.querySelector("#game-state-badge"),
@@ -51,6 +52,7 @@ let waitingChat = {};
 let unsubscribeAnswers = function () {};
 let dashboardReady = false;
 let kickingParticipantId = "";
+let isRevealingResults = false;
 
 function formatSeconds(milliseconds) {
   const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
@@ -117,6 +119,27 @@ function getPhase(game) {
 function setStateBadge(label, state) {
   elements.stateBadge.textContent = label;
   elements.stateBadge.className = "state-badge " + state;
+}
+
+function renderResultRevealControl(phase) {
+  const revealAt = Number(activeGame && activeGame.resultsRevealAt);
+  const hasScheduledReveal = Number.isFinite(revealAt) && revealAt > 0;
+  const isFinished = phase.state === "finished";
+
+  if (!activeGame || !activeGame.id) {
+    elements.revealResults.textContent = "결과 공개 (3초 카운트)";
+    elements.revealResults.disabled = true;
+    return;
+  }
+
+  if (hasScheduledReveal) {
+    elements.revealResults.textContent = client.now() < revealAt ? "결과 공개 카운트 중" : "결과 공개 완료";
+    elements.revealResults.disabled = true;
+    return;
+  }
+
+  elements.revealResults.textContent = "결과 공개 (3초 카운트)";
+  elements.revealResults.disabled = !isFinished || isRevealingResults;
 }
 
 function countCurrentAnswers(questionIndex) {
@@ -295,6 +318,7 @@ async function kickParticipant(uid, name) {
 function renderMonitor() {
   const phase = getPhase(activeGame);
   elements.monitorTimerBar.style.width = "0%";
+  renderResultRevealControl(phase);
 
   if (phase.state === "waiting") {
     setStateBadge("대기 중", "waiting");
@@ -472,6 +496,30 @@ async function stopGame() {
   }
 }
 
+async function revealResults() {
+  const phase = getPhase(activeGame);
+  if (!activeGame || !activeGame.id || phase.state !== "finished" || activeGame.resultsRevealAt) {
+    return;
+  }
+
+  isRevealingResults = true;
+  renderResultRevealControl(phase);
+  const revealAt = client.now() + 3200;
+  try {
+    await client.saveGame(Object.assign({}, activeGame, {
+      status: "finished",
+      finishedAt: activeGame.finishedAt || client.now(),
+      resultsRevealAt: revealAt,
+    }));
+    elements.actionMessage.textContent = "참가자 화면에서 3, 2, 1 카운트 후 결과가 공개됩니다.";
+  } catch (error) {
+    elements.actionMessage.textContent = error.message || "결과를 공개하지 못했습니다.";
+  } finally {
+    isRevealingResults = false;
+    renderMonitor();
+  }
+}
+
 async function resetGame() {
   try {
     await client.resetWaitingRoom();
@@ -484,12 +532,13 @@ async function resetGame() {
 elements.version.addEventListener("change", renderQuestionPlan);
 elements.start.addEventListener("click", startGame);
 elements.stop.addEventListener("click", stopGame);
+elements.revealResults.addEventListener("click", revealResults);
 elements.reset.addEventListener("click", resetGame);
 
 async function initialize() {
   client = await createQuizClient("admin");
-  elements.notice.hidden = false;
-  elements.notice.textContent = client.notice;
+  elements.notice.hidden = !client.notice;
+  elements.notice.textContent = client.notice || "";
 
   if (client.mode === "demo") {
     showDashboard();

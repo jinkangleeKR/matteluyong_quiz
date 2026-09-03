@@ -6,7 +6,7 @@
     },
     "answers": {
       "$gameId": {
-        ".read": "auth != null && (auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2' || (root.child('lobby').child(auth.uid).exists() && root.child('activeGame').child('id').val() === $gameId && (root.child('activeGame').child('status').val() === 'finished' || now >= root.child('activeGame').child('startAt').val() + root.child('activeGame').child('questionDurationSec').val() * root.child('activeGame').child('questionCount').val())))",
+        ".read": "auth != null && (auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2' || (root.child('lobby').child(auth.uid).exists() && root.child('activeGame').child('id').val() === $gameId && root.child('activeGame').child('resultsRevealAt').isNumber() && root.child('activeGame').child('resultsRevealAt').val() <= now))",
         "$uid": {
           ".read": "auth != null && (auth.uid === $uid || auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2')",
           "$questionIndex": {
@@ -17,7 +17,7 @@
       }
     },
     "lobby": {
-      ".read": "auth != null && (auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2' || (root.child('lobby').child(auth.uid).exists() && (root.child('activeGame').child('status').val() === 'finished' || now >= root.child('activeGame').child('startAt').val() + root.child('activeGame').child('questionDurationSec').val() * root.child('activeGame').child('questionCount').val())))",
+      ".read": "auth != null && (auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2' || (root.child('lobby').child(auth.uid).exists() && root.child('activeGame').child('resultsRevealAt').isNumber() && root.child('activeGame').child('resultsRevealAt').val() <= now))",
       ".write": "auth != null && auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2'",
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2')",

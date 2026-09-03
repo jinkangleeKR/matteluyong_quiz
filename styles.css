@@ -291,6 +291,19 @@ input::placeholder {
   font-weight: 700;
 }
 
+.score-guide {
+  margin: 15px 3px 0;
+  color: #83766a;
+  font-size: 0.78rem;
+  line-height: 1.65;
+  text-align: center;
+  word-break: keep-all;
+}
+
+.score-guide strong {
+  color: #9b5a19;
+}
+
 .question-meta {
   margin: 11px 0 10px;
 }
@@ -433,6 +446,33 @@ input::placeholder {
 .result-eyebrow {
   justify-content: center;
   margin: 0 0 13px;
+}
+
+.result-countdown {
+  display: grid;
+  width: 116px;
+  height: 116px;
+  margin: 22px auto 0;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, #eeb246, #e56a31);
+  border-radius: 50%;
+  box-shadow: 0 15px 30px rgba(213, 103, 43, 0.25);
+  font-family: Outfit, sans-serif;
+  font-size: 4.5rem;
+  line-height: 1;
+  animation: result-countdown-pop 700ms ease-out both;
+}
+
+@keyframes result-countdown-pop {
+  from {
+    opacity: 0.2;
+    transform: scale(0.65);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .score-panel {
@@ -833,7 +873,8 @@ input::placeholder {
 
 .primary-button,
 .secondary-button,
-.quiet-button {
+.quiet-button,
+.reveal-results-button {
   min-height: 45px;
   padding: 11px 15px;
   border-radius: 11px;
@@ -863,6 +904,24 @@ input::placeholder {
   color: #71675c;
   background: transparent;
   border: 1px solid #ddd4c9;
+}
+
+.reveal-results-button {
+  color: #79520f;
+  background: #fff0cf;
+  border: 1px solid #edc276;
+}
+
+.reveal-results-button:hover:not(:disabled) {
+  background: #ffe4ac;
+  transform: translateY(-1px);
+}
+
+.reveal-results-button:disabled {
+  color: #a49d93;
+  background: #f1eee9;
+  border-color: #e5e0d9;
+  cursor: not-allowed;
 }
 
 .secondary-button:hover,

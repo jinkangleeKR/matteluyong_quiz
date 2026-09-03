@@ -27,6 +27,12 @@ const elements = {
   answerMessage: document.querySelector("#answer-message"),
   totalScore: document.querySelector("#total-score"),
   resultDetail: document.querySelector("#result-detail"),
+  resultWaiting: document.querySelector("#result-waiting"),
+  resultWaitingKicker: document.querySelector("#result-waiting-kicker"),
+  resultWaitingTitle: document.querySelector("#result-waiting-title"),
+  resultWaitingMessage: document.querySelector("#result-waiting-message"),
+  resultCountdown: document.querySelector("#result-countdown"),
+  resultRevealContent: document.querySelector("#result-reveal-content"),
   finalRankingCount: document.querySelector("#final-ranking-count"),
   finalRankingList: document.querySelector("#final-ranking-list"),
   finalRankingEmpty: document.querySelector("#final-ranking-empty"),
@@ -259,8 +265,41 @@ function chooseAnswer(phase, choice) {
   render();
 }
 
-function renderFinished(phase) {
+function getResultRevealState(game) {
+  const revealAt = Number(game && game.resultsRevealAt);
+  if (!Number.isFinite(revealAt) || revealAt <= 0) {
+    return { state: "waiting" };
+  }
+
+  const remainingMs = revealAt - client.now();
+  if (remainingMs > 0) {
+    return {
+      state: "countdown",
+      count: Math.min(3, Math.max(1, Math.ceil(remainingMs / 1000))),
+    };
+  }
+
+  return { state: "revealed" };
+}
+
+function renderFinished(phase, resultState) {
   setVisible("finished");
+  const isRevealed = resultState.state === "revealed";
+  elements.resultWaiting.hidden = isRevealed;
+  elements.resultRevealContent.hidden = !isRevealed;
+
+  if (!isRevealed) {
+    const isCountdown = resultState.state === "countdown";
+    elements.resultWaitingKicker.textContent = isCountdown ? "RESULTS INCOMING" : "RESULTS LOCKED";
+    elements.resultWaitingTitle.textContent = isCountdown ? "결과 공개까지" : "결과 발표를 기다리고 있어요";
+    elements.resultWaitingMessage.textContent = isCountdown
+      ? "점수와 순위가 곧 공개됩니다."
+      : "진행자가 결과를 공개하면 점수와 순위를 확인할 수 있어요.";
+    elements.resultCountdown.hidden = !isCountdown;
+    elements.resultCountdown.textContent = isCountdown ? String(resultState.count) : "";
+    return;
+  }
+
   const score = getScore(activeGame, phase.version);
   elements.totalScore.textContent = score.total.toLocaleString("ko-KR");
   elements.resultDetail.textContent = "정답 " + score.correct + " / " + phase.version.questions.length + "문항";
@@ -431,9 +470,9 @@ function stopFinalRankingSubscriptions() {
   finalLobby = {};
 }
 
-function syncFinalRankingSubscriptions(phase) {
+function syncFinalRankingSubscriptions(phase, resultState) {
   const shouldSubscribe = Boolean(
-    phase.state === "finished" && activeGame.id && ownLobbyEntry && !kickInfo
+    phase.state === "finished" && resultState.state === "revealed" && activeGame.id && ownLobbyEntry && !kickInfo
   );
   if (!shouldSubscribe) {
     if (finalRankingGameId) {
@@ -465,8 +504,9 @@ function syncFinalRankingSubscriptions(phase) {
 
 function render() {
   const phase = getPhase(activeGame);
+  const resultState = phase.state === "finished" ? getResultRevealState(activeGame) : { state: "waiting" };
   syncDraft(phase);
-  syncFinalRankingSubscriptions(phase);
+  syncFinalRankingSubscriptions(phase, resultState);
   const screen = kickInfo ? "kicked" : !ownLobbyEntry ? "entry" : phase.state === "question" ? "question" : phase.state === "finished" ? "finished" : "waiting";
   const answer = phase.state === "question" ? ownAnswers[String(phase.questionIndex)] : null;
   const screenKey = [
@@ -474,6 +514,8 @@ function render() {
     screen,
     phase.state,
     phase.questionIndex,
+    resultState.state,
+    resultState.count || "",
     answer ? answer.choice : "",
     draftChoice === null ? "" : draftChoice,
     isSubmittingAnswer ? "submitting" : "ready",
@@ -489,7 +531,7 @@ function render() {
     } else if (screen === "question") {
       renderQuestion(phase);
     } else if (screen === "finished") {
-      renderFinished(phase);
+      renderFinished(phase, resultState);
     } else {
       renderWaiting(phase);
     }
@@ -590,8 +632,8 @@ async function initialize() {
   client = await createQuizClient("participant");
   elements.connectionBadge.textContent = client.mode === "firebase" ? "실시간 연결" : "데모 모드";
   elements.connectionBadge.classList.toggle("demo", client.mode !== "firebase");
-  elements.connectionNotice.hidden = false;
-  elements.connectionNotice.textContent = client.notice;
+  elements.connectionNotice.hidden = !client.notice;
+  elements.connectionNotice.textContent = client.notice || "";
 
   client.subscribeGame(function (game) {
     activeGame = game || { status: "waiting" };

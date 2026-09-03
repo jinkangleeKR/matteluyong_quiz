@@ -290,7 +290,7 @@ async function createFirebaseClient(role) {
 
   return {
     mode: "firebase",
-    notice: "Firebase 실시간 모드: 모든 참가자가 같은 진행 상태와 타이머를 공유합니다.",
+    notice: "",
     get playerId() {
       const user = getUser();
       return user ? user.uid : "";
