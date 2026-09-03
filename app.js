@@ -68,6 +68,7 @@ let renderedChat = "";
 let isSubmittingAnswer = false;
 let isEnteringGame = false;
 let isSendingChat = false;
+let answerSubmissionError = "";
 let draftQuestionIndex = -1;
 let draftChoice = null;
 let draftText = "";
@@ -207,6 +208,8 @@ function renderQuestion(phase) {
   elements.submitAnswer.textContent = submitted ? (isChanging ? "변경한 답 제출하기" : "제출한 답") : "답안 제출하기";
   elements.answerMessage.textContent = isSubmittingAnswer
     ? "답안을 제출하는 중이에요…"
+    : answerSubmissionError
+      ? answerSubmissionError
     : submitted && isChanging
       ? "새 답을 골랐어요. 제출 버튼을 눌러 변경을 확정하세요."
       : submitted
@@ -230,6 +233,7 @@ function renderQuestion(phase) {
     answerInput.addEventListener("input", function () {
       draftText = answerInput.value;
       draftWasUserEdited = true;
+      answerSubmissionError = "";
       const currentText = draftText.trim();
       const changing = submitted && normalizeText(currentText) !== normalizeText(submitted.text);
       elements.submitAnswer.disabled = !currentText || isSubmittingAnswer || Boolean(submitted && !changing);
@@ -262,6 +266,7 @@ function renderQuestion(phase) {
       if (!isSubmittingAnswer) {
         draftChoice = index;
         draftWasUserEdited = true;
+        answerSubmissionError = "";
         renderedScreen = "";
         render();
       }
@@ -343,11 +348,13 @@ function syncDraft(phase) {
     draftChoice = null;
     draftText = "";
     draftWasUserEdited = false;
+    answerSubmissionError = "";
   } else if (draftQuestionIndex !== phase.questionIndex) {
     draftQuestionIndex = phase.questionIndex;
     draftChoice = null;
     draftText = "";
     draftWasUserEdited = false;
+    answerSubmissionError = "";
   }
 }
 
@@ -512,14 +519,15 @@ async function submitAnswer() {
   if (phase.state !== "question" || isSubmittingAnswer || !ownLobbyEntry || (shortAnswer ? !text : draftChoice === null)) { return; }
   if (submitted && (shortAnswer ? text === String(submitted.text || "").trim() : submitted.choice === draftChoice)) { return; }
   isSubmittingAnswer = true;
+  answerSubmissionError = "";
   renderedScreen = "";
   render();
   try {
     await client.submitRoomAnswer(roomId, shortAnswer
-      ? { questionIndex: phase.questionIndex, answerType: "short-answer", text: text, playerName: ownLobbyEntry.name || "참가자" }
+      ? { questionIndex: phase.questionIndex, answerType: "short-answer", choice: 0, text: text, playerName: ownLobbyEntry.name || "참가자" }
       : { questionIndex: phase.questionIndex, answerType: "multiple-choice", choice: draftChoice, playerName: ownLobbyEntry.name || "참가자" });
   } catch (error) {
-    elements.answerMessage.textContent = "답안 제출에 실패했어요. 연결 상태를 확인해 주세요.";
+    answerSubmissionError = error.message || "답안 제출에 실패했어요. 연결 상태를 확인해 주세요.";
   } finally {
     isSubmittingAnswer = false;
     renderedScreen = "";

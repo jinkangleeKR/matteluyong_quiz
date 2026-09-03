@@ -28,6 +28,7 @@ const elements = {
   savedQuizList: document.querySelector("#saved-quiz-list"),
   savedQuizEmpty: document.querySelector("#saved-quiz-empty"),
   roomQuizSelect: document.querySelector("#room-quiz-select"),
+  editSelectedQuiz: document.querySelector("#edit-selected-quiz"),
   duration: document.querySelector("#question-duration"),
   basePoints: document.querySelector("#base-points"),
   speedPoints: document.querySelector("#speed-points"),
@@ -336,7 +337,7 @@ function renderSavedQuizzes() {
     edit.type = "button";
     edit.className = "quiet-button compact-button";
     edit.textContent = "수정";
-    edit.addEventListener("click", function () { editorQuiz = clone(quiz); elements.quizEditorMessage.textContent = ""; renderEditor(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+    edit.addEventListener("click", function () { openQuizEditor(quiz); });
     remove.type = "button";
     remove.className = "danger-button compact-button";
     remove.textContent = "삭제";
@@ -358,6 +359,7 @@ function renderRoomQuizSelect() {
     option.textContent = "먼저 퀴즈를 저장해 주세요";
     elements.roomQuizSelect.append(option);
     elements.createRoom.disabled = true;
+    elements.editSelectedQuiz.disabled = true;
     return;
   }
   quizzes.forEach(function (quiz) {
@@ -368,6 +370,16 @@ function renderRoomQuizSelect() {
   });
   elements.roomQuizSelect.value = quizzes.some(function (quiz) { return quiz.id === previous; }) ? previous : quizzes[0].id;
   elements.createRoom.disabled = false;
+  elements.editSelectedQuiz.disabled = false;
+}
+
+function openQuizEditor(quiz) {
+  if (!quiz) { return; }
+  editorQuiz = clone(quiz);
+  elements.quizEditorMessage.textContent = "";
+  renderEditor();
+  renderTabs("builder");
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function renderRoomList() {
@@ -859,6 +871,9 @@ elements.addQuestion.addEventListener("click", function () {
 });
 elements.newQuiz.addEventListener("click", function () { editorQuiz = createBlankQuiz(); elements.quizEditorMessage.textContent = ""; renderEditor(); });
 elements.createRoom.addEventListener("click", createRoom);
+elements.editSelectedQuiz.addEventListener("click", function () {
+  openQuizEditor(savedQuizzes[elements.roomQuizSelect.value]);
+});
 elements.copyRoomLink.addEventListener("click", copyRoomLink);
 elements.start.addEventListener("click", startGame);
 elements.stop.addEventListener("click", stopGame);
