@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>현장 퀴즈 | 한 화면 테스트</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="preview-body">
+    <main class="preview-shell">
+      <header class="preview-header">
+        <div>
+          <p class="eyebrow"><span></span> SANDBOX</p>
+          <h1>관리자 · 참가자 한 화면 테스트</h1>
+          <p>왼쪽에서 퀴즈와 게임방을 만들면 오른쪽 참가자 화면이 자동으로 그 방에 연결됩니다.</p>
+        </div>
+        <button id="reset-preview" class="quiet-button" type="button">테스트 데이터 초기화</button>
+      </header>
+
+      <p id="preview-status" class="preview-status" aria-live="polite">왼쪽에서 퀴즈를 저장한 뒤 게임방을 만들어 보세요.</p>
+
+      <div class="preview-frame-grid">
+        <section class="preview-pane">
+          <div class="preview-pane-heading"><span>1</span><h2>관리자 화면</h2></div>
+          <iframe id="admin-preview" title="관리자 테스트 화면" src="admin.html?demo=1"></iframe>
+        </section>
+        <section class="preview-pane">
+          <div class="preview-pane-heading"><span>2</span><h2>참가자 화면</h2></div>
+          <iframe id="participant-preview" title="참가자 테스트 화면" src="index.html?demo=1"></iframe>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="preview.js"></script>
+  </body>
+</html>

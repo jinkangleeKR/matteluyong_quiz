@@ -456,6 +456,10 @@ async function createFirebaseClient(role) {
 }
 
 export async function createQuizClient(role) {
+  const forceDemo = new URLSearchParams(window.location.search).get("demo") === "1";
+  if (forceDemo) {
+    return createDemoClient(role, "통합 테스트 모드: 이 화면의 데이터는 브라우저에만 저장됩니다.");
+  }
   if (!isFirebaseConfigured) {
     return createDemoClient(role);
   }

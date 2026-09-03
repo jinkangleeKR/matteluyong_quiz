@@ -167,8 +167,17 @@ function setStateBadge(label, state) {
 
 function roomParticipantLink(id) {
   const url = new URL("./", window.location.href);
+  if (new URLSearchParams(window.location.search).get("demo") === "1") {
+    url.searchParams.set("demo", "1");
+  }
   url.searchParams.set("room", id);
   return url.toString();
+}
+
+function shareRoomWithPreview(link, id) {
+  if (window.parent !== window) {
+    window.parent.postMessage({ type: "matteluyong-quiz-room", link: link, roomId: id }, window.location.origin);
+  }
 }
 
 function renderTabs(tab) {
@@ -339,6 +348,7 @@ function renderSelectedRoom() {
   const phase = getPhase(activeRoom);
   elements.selectedRoomTitle.textContent = activeRoom.title || "제목 없는 퀴즈";
   elements.roomLink.value = link;
+  shareRoomWithPreview(link, selectedRoomId);
   elements.roomQr.src = "https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=10&data=" + encodeURIComponent(link);
   elements.selectedRoomState.textContent = roomStatusLabel(activeRoom.status);
   elements.selectedRoomState.className = "state-badge " + (phase.state === "question" ? "live" : phase.state === "finished" ? "finished" : "waiting");
