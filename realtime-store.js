@@ -37,6 +37,25 @@ function defaultData() {
   return { quizCatalog: {}, ownerRooms: {}, rooms: {}, roomSecrets: {} };
 }
 
+function answerRecord(answer, answeredAt) {
+  const isShortAnswer = answer.answerType === "short-answer" || typeof answer.text === "string";
+  const record = {
+    answerType: isShortAnswer ? "short-answer" : "multiple-choice",
+    playerName: answer.playerName,
+    answeredAt: answeredAt,
+  };
+
+  if (isShortAnswer) {
+    record.text = String(answer.text || "").trim();
+    // 기존 Firebase 보안 규칙 및 저장 데이터와의 호환을 위해 유지합니다.
+    record.choice = 0;
+  } else {
+    record.choice = answer.choice;
+  }
+
+  return record;
+}
+
 function createDemoClient(role, notice) {
   const playerId = getLocalPlayerId();
   const ownerId = "demo-admin";
@@ -226,7 +245,7 @@ function createDemoClient(role, notice) {
       const room = data.rooms[roomId];
       if (!room || room.state.status !== "live" || !room.lobby[playerId]) { throw new Error("답안을 제출할 수 없습니다."); }
       room.answers[playerId] = room.answers[playerId] || {};
-      room.answers[playerId][answer.questionIndex] = { choice: answer.choice, playerName: answer.playerName, answeredAt: Date.now() };
+      room.answers[playerId][answer.questionIndex] = answerRecord(answer, Date.now());
       saveData(data);
     },
     signInAdmin: async function () { return { uid: ownerId, email: "demo@example.com" }; },
@@ -433,11 +452,10 @@ async function createFirebaseClient(role) {
     },
     submitRoomAnswer: async function (roomId, answer) {
       const user = requireUser();
-      await databaseModule.set(roomRef(roomId, "answers/" + user.uid + "/" + answer.questionIndex), {
-        choice: answer.choice,
-        playerName: answer.playerName,
-        answeredAt: databaseModule.serverTimestamp(),
-      });
+      await databaseModule.set(
+        roomRef(roomId, "answers/" + user.uid + "/" + answer.questionIndex),
+        answerRecord(answer, databaseModule.serverTimestamp())
+      );
     },
     signInAdmin: async function (email, password) {
       const credential = await authModule.signInWithEmailAndPassword(auth, email, password);
