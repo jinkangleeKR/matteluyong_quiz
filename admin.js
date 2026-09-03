@@ -1,11 +1,7 @@
-import {
-  calculateAnswerScore,
-  defaultQuizVersionId,
-  getQuizVersion,
-  quizVersions,
-} from "./quiz-data.js";
-import { createGameId, createQuizClient } from "./realtime-store.js";
+import { calculateAnswerScore } from "./quiz-data.js";
+import { createQuizClient, createQuizId } from "./realtime-store.js";
 
+const QUESTION_COUNT = 4;
 const elements = {
   notice: document.querySelector("#admin-notice"),
   login: document.querySelector("#admin-login"),
@@ -13,19 +9,43 @@ const elements = {
   loginMessage: document.querySelector("#login-message"),
   email: document.querySelector("#admin-email"),
   password: document.querySelector("#admin-password"),
+  signUp: document.querySelector("#sign-up"),
   dashboard: document.querySelector("#admin-dashboard"),
-  modeBadge: document.querySelector("#admin-mode-badge"),
-  version: document.querySelector("#quiz-version"),
-  versionDescription: document.querySelector("#version-description"),
+  userEmail: document.querySelector("#admin-user-email"),
+  signOut: document.querySelector("#sign-out"),
+  tabs: Array.from(document.querySelectorAll(".admin-tab")),
+  builderTab: document.querySelector("#builder-tab"),
+  gameTab: document.querySelector("#game-tab"),
+  editorTitle: document.querySelector("#editor-title"),
+  quizTitle: document.querySelector("#quiz-title"),
+  quizDescription: document.querySelector("#quiz-description"),
+  questionEditor: document.querySelector("#question-editor"),
+  saveQuiz: document.querySelector("#save-quiz"),
+  newQuiz: document.querySelector("#new-quiz"),
+  quizEditorMessage: document.querySelector("#quiz-editor-message"),
+  savedQuizCount: document.querySelector("#saved-quiz-count"),
+  savedQuizList: document.querySelector("#saved-quiz-list"),
+  savedQuizEmpty: document.querySelector("#saved-quiz-empty"),
+  roomQuizSelect: document.querySelector("#room-quiz-select"),
   duration: document.querySelector("#question-duration"),
   basePoints: document.querySelector("#base-points"),
   speedPoints: document.querySelector("#speed-points"),
-  questionPlan: document.querySelector("#question-plan"),
-  start: document.querySelector("#start-game"),
-  stop: document.querySelector("#stop-game"),
-  revealResults: document.querySelector("#reveal-results"),
-  reset: document.querySelector("#reset-game"),
-  actionMessage: document.querySelector("#admin-action-message"),
+  createRoom: document.querySelector("#create-room"),
+  roomSetupMessage: document.querySelector("#room-setup-message"),
+  roomCount: document.querySelector("#room-count"),
+  roomList: document.querySelector("#room-list"),
+  roomListEmpty: document.querySelector("#room-list-empty"),
+  shareEmpty: document.querySelector("#room-share-empty"),
+  shareContent: document.querySelector("#room-share-content"),
+  selectedRoomState: document.querySelector("#selected-room-state"),
+  selectedRoomTitle: document.querySelector("#selected-room-title"),
+  roomQr: document.querySelector("#room-qr"),
+  roomLink: document.querySelector("#room-link"),
+  copyRoomLink: document.querySelector("#copy-room-link"),
+  copyRoomMessage: document.querySelector("#copy-room-message"),
+  controlSection: document.querySelector("#room-control-section"),
+  lobbySection: document.querySelector("#room-lobby-section"),
+  scoreSection: document.querySelector("#room-score-section"),
   stateBadge: document.querySelector("#game-state-badge"),
   monitorTitle: document.querySelector("#monitor-title"),
   monitorTimer: document.querySelector("#monitor-timer"),
@@ -33,87 +53,111 @@ const elements = {
   monitorTimerBar: document.querySelector("#monitor-timer-bar"),
   monitorQuestion: document.querySelector("#monitor-question"),
   answerCount: document.querySelector("#answer-count"),
-  scoreboardCount: document.querySelector("#scoreboard-count"),
-  scoreboardBody: document.querySelector("#scoreboard-body"),
-  scoreboardEmpty: document.querySelector("#scoreboard-empty"),
+  start: document.querySelector("#start-game"),
+  stop: document.querySelector("#stop-game"),
+  reveal: document.querySelector("#reveal-results"),
+  reset: document.querySelector("#reset-room"),
+  deleteRoom: document.querySelector("#delete-room"),
+  actionMessage: document.querySelector("#room-action-message"),
   lobbyCount: document.querySelector("#lobby-count"),
   lobbyHelp: document.querySelector("#lobby-help"),
   lobbyList: document.querySelector("#lobby-list"),
   lobbyEmpty: document.querySelector("#lobby-empty"),
   adminChatCount: document.querySelector("#admin-chat-count"),
   adminChatMessages: document.querySelector("#admin-chat-messages"),
+  scoreboardCount: document.querySelector("#scoreboard-count"),
+  scoreboardBody: document.querySelector("#scoreboard-body"),
+  scoreboardEmpty: document.querySelector("#scoreboard-empty"),
 };
 
 let client;
-let activeGame = { status: "waiting" };
+let dashboardReady = false;
+let savedQuizzes = {};
+let ownedRooms = {};
+let editorQuiz = createBlankQuiz();
+let selectedRoomId = "";
+let activeRoom = null;
+let activeRoomSecret = null;
 let activeAnswers = {};
 let activeLobby = {};
 let waitingChat = {};
-let unsubscribeAnswers = function () {};
-let dashboardReady = false;
 let kickingParticipantId = "";
-let isRevealingResults = false;
+let isRevealing = false;
+let unsubscribeQuizzes = function () {};
+let unsubscribeRooms = function () {};
+let unsubscribeRoomState = function () {};
+let unsubscribeRoomSecrets = function () {};
+let unsubscribeRoomAnswers = function () {};
+let unsubscribeRoomLobby = function () {};
+let unsubscribeRoomChat = function () {};
+
+function createBlankQuiz() {
+  return {
+    id: createQuizId(),
+    title: "",
+    description: "",
+    questions: Array.from({ length: QUESTION_COUNT }, function (_, index) {
+      return { id: "q" + (index + 1), prompt: "", options: ["", "", "", ""], correctIndex: 0 };
+    }),
+  };
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
 
 function formatSeconds(milliseconds) {
   const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
   return String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
 }
 
-function formatJoinedAt(value) {
-  const timestamp = Number(value);
-  if (!Number.isFinite(timestamp) || timestamp <= 0) {
-    return "방금 입장";
-  }
-
-  return new Intl.DateTimeFormat("ko-KR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(timestamp)) + " 입장";
+function formatDate(value) {
+  const time = Number(value);
+  if (!Number.isFinite(time) || time <= 0) { return "방금 생성"; }
+  return new Intl.DateTimeFormat("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(time));
 }
 
 function limitNumber(value, minimum, maximum, fallback) {
   const number = Number(value);
-  if (!Number.isFinite(number)) {
-    return fallback;
-  }
+  if (!Number.isFinite(number)) { return fallback; }
   return Math.min(maximum, Math.max(minimum, Math.round(number)));
 }
 
-function getPhase(game) {
-  if (!game || game.status === "waiting") {
-    return { state: "waiting" };
-  }
+function getQuizEntries() {
+  return Object.values(savedQuizzes).sort(function (first, second) {
+    return (Number(second.updatedAt) || 0) - (Number(first.updatedAt) || 0);
+  });
+}
 
-  const version = getQuizVersion(game.versionId);
-  if (!version) {
-    return { state: "error" };
-  }
-
-  if (game.status === "finished") {
-    return { state: "finished", version: version };
-  }
-
-  const startsIn = Number(game.startAt) - client.now();
-  if (startsIn > 0) {
-    return { state: "starting", version: version, startsIn: startsIn };
-  }
-
-  const durationMs = Number(game.questionDurationSec) * 1000;
-  const elapsed = Math.max(0, client.now() - Number(game.startAt));
-  const questionIndex = Math.floor(elapsed / durationMs);
-  if (questionIndex >= version.questions.length) {
-    return { state: "finished", version: version };
-  }
-
-  const questionElapsed = elapsed - questionIndex * durationMs;
+function createPublicQuizSnapshot(quiz) {
   return {
-    state: "question",
-    version: version,
-    questionIndex: questionIndex,
-    remainingMs: Math.max(0, durationMs - questionElapsed),
-    durationMs: durationMs,
+    id: quiz.id,
+    title: quiz.title,
+    description: quiz.description || "",
+    questions: quiz.questions.map(function (question) {
+      return { id: question.id, prompt: question.prompt, options: question.options };
+    }),
   };
+}
+
+function questionForScoring(question, index) {
+  const answerKey = activeRoomSecret && activeRoomSecret.answerKey;
+  return Object.assign({}, question, { correctIndex: Array.isArray(answerKey) ? Number(answerKey[index]) : -1 });
+}
+
+function getPhase(room) {
+  if (!room || room.status === "waiting") { return { state: "waiting" }; }
+  const quiz = room.quizSnapshot;
+  if (!quiz || !Array.isArray(quiz.questions)) { return { state: "error" }; }
+  if (room.status === "finished") { return { state: "finished", quiz: quiz }; }
+  const startsIn = Number(room.startAt) - client.now();
+  if (startsIn > 0) { return { state: "starting", quiz: quiz, startsIn: startsIn }; }
+  const durationMs = Number(room.questionDurationSec) * 1000;
+  const elapsed = Math.max(0, client.now() - Number(room.startAt));
+  const questionIndex = Math.floor(elapsed / durationMs);
+  if (questionIndex >= quiz.questions.length) { return { state: "finished", quiz: quiz }; }
+  const questionElapsed = elapsed - questionIndex * durationMs;
+  return { state: "question", quiz: quiz, questionIndex: questionIndex, remainingMs: Math.max(0, durationMs - questionElapsed), durationMs: durationMs };
 }
 
 function setStateBadge(label, state) {
@@ -121,117 +165,326 @@ function setStateBadge(label, state) {
   elements.stateBadge.className = "state-badge " + state;
 }
 
-function renderResultRevealControl(phase) {
-  const revealAt = Number(activeGame && activeGame.resultsRevealAt);
-  const hasScheduledReveal = Number.isFinite(revealAt) && revealAt > 0;
-  const isFinished = phase.state === "finished";
+function roomParticipantLink(id) {
+  const url = new URL("./", window.location.href);
+  url.searchParams.set("room", id);
+  return url.toString();
+}
 
-  if (!activeGame || !activeGame.id) {
-    elements.revealResults.textContent = "결과 공개 (3초 카운트)";
-    elements.revealResults.disabled = true;
+function renderTabs(tab) {
+  elements.tabs.forEach(function (button) {
+    button.classList.toggle("active", button.dataset.tab === tab);
+  });
+  elements.builderTab.hidden = tab !== "builder";
+  elements.gameTab.hidden = tab !== "game";
+}
+
+function renderQuestionEditor() {
+  elements.questionEditor.replaceChildren();
+  editorQuiz.questions.forEach(function (question, questionIndex) {
+    const card = document.createElement("fieldset");
+    const legend = document.createElement("legend");
+    const prompt = document.createElement("input");
+    const options = document.createElement("div");
+    const answerRow = document.createElement("label");
+    const answerLabel = document.createElement("span");
+    const answerSelect = document.createElement("select");
+    card.className = "question-edit-card";
+    legend.textContent = "문항 " + (questionIndex + 1);
+    prompt.type = "text";
+    prompt.className = "question-prompt-input";
+    prompt.maxLength = 240;
+    prompt.placeholder = "문제를 입력하세요";
+    prompt.value = question.prompt;
+    prompt.addEventListener("input", function () { editorQuiz.questions[questionIndex].prompt = prompt.value; });
+    options.className = "option-edit-grid";
+    question.options.forEach(function (option, optionIndex) {
+      const label = document.createElement("label");
+      const marker = document.createElement("span");
+      const input = document.createElement("input");
+      marker.textContent = String.fromCharCode(65 + optionIndex);
+      input.type = "text";
+      input.maxLength = 120;
+      input.placeholder = "보기 " + String.fromCharCode(65 + optionIndex);
+      input.value = option;
+      input.addEventListener("input", function () { editorQuiz.questions[questionIndex].options[optionIndex] = input.value; });
+      label.append(marker, input);
+      options.append(label);
+    });
+    answerLabel.textContent = "정답";
+    for (let index = 0; index < 4; index += 1) {
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.textContent = String.fromCharCode(65 + index) + "번";
+      answerSelect.append(option);
+    }
+    answerSelect.value = String(question.correctIndex);
+    answerSelect.addEventListener("change", function () { editorQuiz.questions[questionIndex].correctIndex = Number(answerSelect.value); });
+    answerRow.className = "answer-key-row";
+    answerRow.append(answerLabel, answerSelect);
+    card.append(legend, prompt, options, answerRow);
+    elements.questionEditor.append(card);
+  });
+}
+
+function renderEditor() {
+  elements.editorTitle.textContent = savedQuizzes[editorQuiz.id] ? "퀴즈 수정하기" : "새 퀴즈 만들기";
+  elements.quizTitle.value = editorQuiz.title || "";
+  elements.quizDescription.value = editorQuiz.description || "";
+  renderQuestionEditor();
+}
+
+function renderSavedQuizzes() {
+  const quizzes = getQuizEntries();
+  elements.savedQuizCount.textContent = quizzes.length + "개";
+  elements.savedQuizCount.className = "state-badge " + (quizzes.length ? "live" : "waiting");
+  elements.savedQuizList.replaceChildren();
+  elements.savedQuizEmpty.hidden = quizzes.length > 0;
+  quizzes.forEach(function (quiz) {
+    const item = document.createElement("article");
+    const text = document.createElement("div");
+    const title = document.createElement("strong");
+    const meta = document.createElement("span");
+    const actions = document.createElement("div");
+    const edit = document.createElement("button");
+    const remove = document.createElement("button");
+    item.className = "saved-item";
+    title.textContent = quiz.title || "제목 없는 퀴즈";
+    meta.textContent = quiz.questions.length + "문항 · " + formatDate(quiz.updatedAt || quiz.createdAt);
+    edit.type = "button";
+    edit.className = "quiet-button compact-button";
+    edit.textContent = "수정";
+    edit.addEventListener("click", function () { editorQuiz = clone(quiz); elements.quizEditorMessage.textContent = ""; renderEditor(); window.scrollTo({ top: 0, behavior: "smooth" }); });
+    remove.type = "button";
+    remove.className = "danger-button compact-button";
+    remove.textContent = "삭제";
+    remove.addEventListener("click", function () { deleteQuiz(quiz); });
+    text.append(title, meta);
+    actions.append(edit, remove);
+    item.append(text, actions);
+    elements.savedQuizList.append(item);
+  });
+}
+
+function renderRoomQuizSelect() {
+  const previous = elements.roomQuizSelect.value;
+  const quizzes = getQuizEntries();
+  elements.roomQuizSelect.replaceChildren();
+  if (!quizzes.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "먼저 퀴즈를 저장해 주세요";
+    elements.roomQuizSelect.append(option);
+    elements.createRoom.disabled = true;
     return;
   }
+  quizzes.forEach(function (quiz) {
+    const option = document.createElement("option");
+    option.value = quiz.id;
+    option.textContent = quiz.title + " · " + quiz.questions.length + "문항";
+    elements.roomQuizSelect.append(option);
+  });
+  elements.roomQuizSelect.value = quizzes.some(function (quiz) { return quiz.id === previous; }) ? previous : quizzes[0].id;
+  elements.createRoom.disabled = false;
+}
 
-  if (hasScheduledReveal) {
-    elements.revealResults.textContent = client.now() < revealAt ? "결과 공개 카운트 중" : "결과 공개 완료";
-    elements.revealResults.disabled = true;
+function renderRoomList() {
+  const rooms = Object.entries(ownedRooms).sort(function (first, second) {
+    return (Number(second[1].updatedAt || second[1].createdAt) || 0) - (Number(first[1].updatedAt || first[1].createdAt) || 0);
+  });
+  elements.roomCount.textContent = rooms.length + "개";
+  elements.roomCount.className = "state-badge " + (rooms.length ? "live" : "waiting");
+  elements.roomList.replaceChildren();
+  elements.roomListEmpty.hidden = rooms.length > 0;
+  rooms.forEach(function (entry) {
+    const roomId = entry[0];
+    const summary = entry[1] || {};
+    const item = document.createElement("article");
+    const text = document.createElement("div");
+    const title = document.createElement("strong");
+    const meta = document.createElement("span");
+    const select = document.createElement("button");
+    item.className = "saved-item" + (roomId === selectedRoomId ? " selected-room" : "");
+    title.textContent = summary.title || "제목 없는 게임방";
+    meta.textContent = roomStatusLabel(summary.status) + " · " + formatDate(summary.updatedAt || summary.createdAt);
+    select.type = "button";
+    select.className = "primary-button compact-button";
+    select.textContent = roomId === selectedRoomId ? "선택됨" : "열기";
+    select.addEventListener("click", function () { selectRoom(roomId); });
+    text.append(title, meta);
+    item.append(text, select);
+    elements.roomList.append(item);
+  });
+}
+
+function roomStatusLabel(status) {
+  if (status === "live") { return "진행 중"; }
+  if (status === "finished") { return "종료"; }
+  return "대기 중";
+}
+
+function renderSelectedRoom() {
+  const hasRoom = Boolean(activeRoom && selectedRoomId);
+  elements.shareEmpty.hidden = hasRoom;
+  elements.shareContent.hidden = !hasRoom;
+  elements.controlSection.hidden = !hasRoom;
+  elements.lobbySection.hidden = !hasRoom;
+  elements.scoreSection.hidden = !hasRoom;
+  if (!hasRoom) {
+    elements.selectedRoomState.textContent = "방 선택 필요";
+    elements.selectedRoomState.className = "state-badge waiting";
     return;
   }
-
-  elements.revealResults.textContent = "결과 공개 (3초 카운트)";
-  elements.revealResults.disabled = !isFinished || isRevealingResults;
+  const link = roomParticipantLink(selectedRoomId);
+  const phase = getPhase(activeRoom);
+  elements.selectedRoomTitle.textContent = activeRoom.title || "제목 없는 퀴즈";
+  elements.roomLink.value = link;
+  elements.roomQr.src = "https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=10&data=" + encodeURIComponent(link);
+  elements.selectedRoomState.textContent = roomStatusLabel(activeRoom.status);
+  elements.selectedRoomState.className = "state-badge " + (phase.state === "question" ? "live" : phase.state === "finished" ? "finished" : "waiting");
+  renderMonitor();
+  renderLobby();
+  renderScoreboard();
 }
 
 function countCurrentAnswers(questionIndex) {
-  if (typeof questionIndex !== "number") {
-    return 0;
-  }
-
-  return Object.keys(activeAnswers).filter(function (playerId) {
-    return Boolean(activeAnswers[playerId] && activeAnswers[playerId][questionIndex]);
-  }).length;
+  if (typeof questionIndex !== "number") { return 0; }
+  return Object.keys(activeAnswers).filter(function (playerId) { return Boolean(activeAnswers[playerId] && activeAnswers[playerId][questionIndex]); }).length;
 }
 
 function getLeaderboard() {
-  const version = activeGame && activeGame.id ? getQuizVersion(activeGame.versionId) : null;
-  if (!version) {
-    return [];
-  }
-
+  if (!activeRoom || !activeRoom.quizSnapshot) { return []; }
   return Object.keys(activeAnswers).map(function (playerId) {
-    const playerAnswers = activeAnswers[playerId] || {};
-    let playerName = "참가자";
+    const answers = activeAnswers[playerId] || {};
+    let name = "참가자";
     let score = 0;
     let correct = 0;
-
-    version.questions.forEach(function (question, index) {
-      const answer = playerAnswers[String(index)];
-      if (!answer) {
-        return;
-      }
-
-      if (answer.playerName) {
-        playerName = answer.playerName;
-      }
-      score += calculateAnswerScore(answer, question, activeGame, index);
-      if (answer.choice === question.correctIndex) {
-        correct += 1;
-      }
+    activeRoom.quizSnapshot.questions.forEach(function (question, index) {
+      const answer = answers[String(index)];
+      if (!answer) { return; }
+      if (answer.playerName) { name = answer.playerName; }
+      const scoredQuestion = questionForScoring(question, index);
+      score += calculateAnswerScore(answer, scoredQuestion, activeRoom, index);
+      if (answer.choice === scoredQuestion.correctIndex) { correct += 1; }
     });
-
-    return {
-      id: playerId,
-      name: playerName,
-      score: score,
-      correct: correct,
-    };
+    return { id: playerId, name: name, score: score, correct: correct };
   }).sort(function (first, second) {
-    if (second.score !== first.score) {
-      return second.score - first.score;
-    }
-    if (second.correct !== first.correct) {
-      return second.correct - first.correct;
-    }
-    return first.name.localeCompare(second.name, "ko");
+    return second.score - first.score || second.correct - first.correct || first.name.localeCompare(second.name, "ko");
   });
 }
 
 function renderScoreboard() {
   const leaderboard = getLeaderboard();
-  elements.scoreboardCount.textContent = leaderboard.length.toLocaleString("ko-KR") + "명";
+  elements.scoreboardCount.textContent = leaderboard.length + "명";
   elements.scoreboardCount.className = "state-badge " + (leaderboard.length ? "live" : "waiting");
   elements.scoreboardBody.replaceChildren();
   elements.scoreboardEmpty.hidden = leaderboard.length > 0;
-
   leaderboard.forEach(function (player, index) {
     const row = document.createElement("tr");
-    const rank = document.createElement("td");
-    const name = document.createElement("td");
-    const correct = document.createElement("td");
-    const score = document.createElement("td");
-    rank.textContent = String(index + 1);
-    name.textContent = player.name;
-    correct.textContent = player.correct + " / 4";
-    score.textContent = player.score.toLocaleString("ko-KR") + "점";
-    row.append(rank, name, correct, score);
+    [String(index + 1), player.name, player.correct + " / " + activeRoom.quizSnapshot.questions.length, player.score.toLocaleString("ko-KR") + "점"].forEach(function (value) {
+      const cell = document.createElement("td");
+      cell.textContent = value;
+      row.append(cell);
+    });
     elements.scoreboardBody.append(row);
   });
 }
 
-function getOrderedChatMessages() {
-  return Object.entries(waitingChat || {}).sort(function (first, second) {
-    const firstTime = Number(first[1] && first[1].sentAt) || 0;
-    const secondTime = Number(second[1] && second[1].sentAt) || 0;
-    return firstTime - secondTime || first[0].localeCompare(second[0]);
-  }).slice(-100);
+function renderResultRevealControl(phase) {
+  const revealAt = Number(activeRoom && activeRoom.resultsRevealAt);
+  if (!activeRoom || !activeRoom.id) {
+    elements.reveal.disabled = true;
+    return;
+  }
+  if (Number.isFinite(revealAt) && revealAt > 0) {
+    elements.reveal.textContent = client.now() < revealAt ? "결과 공개 카운트 중" : "결과 공개 완료";
+    elements.reveal.disabled = true;
+    return;
+  }
+  const hasAnswerKey = Boolean(activeRoomSecret && Array.isArray(activeRoomSecret.answerKey));
+  elements.reveal.textContent = hasAnswerKey ? "결과 공개 (3초 카운트)" : "정답 정보 불러오는 중";
+  elements.reveal.disabled = phase.state !== "finished" || isRevealing || !hasAnswerKey;
+}
+
+function renderMonitor() {
+  if (!activeRoom) { return; }
+  const phase = getPhase(activeRoom);
+  elements.monitorTimerBar.style.width = "0%";
+  renderResultRevealControl(phase);
+  if (phase.state === "waiting") {
+    setStateBadge("대기 중", "waiting");
+    elements.monitorTitle.textContent = "참가자 입장을 기다리고 있어요";
+    elements.monitorTimer.textContent = "--:--";
+    elements.monitorSubtitle.textContent = "QR 링크를 공유한 뒤 시작 버튼을 눌러 주세요.";
+    elements.monitorQuestion.textContent = "- / -";
+    elements.answerCount.textContent = "0";
+    return;
+  }
+  if (phase.state === "starting") {
+    setStateBadge("시작 준비", "starting");
+    elements.monitorTitle.textContent = activeRoom.title;
+    elements.monitorTimer.textContent = formatSeconds(phase.startsIn);
+    elements.monitorSubtitle.textContent = "첫 문제가 동시에 열릴 때까지 남은 시간";
+    elements.monitorQuestion.textContent = "시작 전";
+    elements.answerCount.textContent = "0";
+    return;
+  }
+  if (phase.state === "question") {
+    setStateBadge("진행 중", "live");
+    elements.monitorTitle.textContent = "문제 " + (phase.questionIndex + 1) + " 진행 중";
+    elements.monitorTimer.textContent = formatSeconds(phase.remainingMs);
+    elements.monitorSubtitle.textContent = "시간이 끝나면 모든 참가자가 자동으로 다음 문제로 이동합니다.";
+    elements.monitorQuestion.textContent = phase.questionIndex + 1 + " / " + phase.quiz.questions.length;
+    elements.answerCount.textContent = countCurrentAnswers(phase.questionIndex) + "";
+    elements.monitorTimerBar.style.width = (phase.remainingMs / phase.durationMs) * 100 + "%";
+    return;
+  }
+  setStateBadge(phase.state === "error" ? "설정 오류" : "종료", "finished");
+  elements.monitorTitle.textContent = phase.state === "error" ? "퀴즈 정보를 찾지 못했습니다" : "퀴즈가 종료됐어요";
+  elements.monitorTimer.textContent = phase.state === "error" ? "--:--" : "DONE";
+  elements.monitorSubtitle.textContent = phase.state === "error" ? "게임방을 새로 만들어 주세요." : "결과를 공개하거나 새 대기실을 열 수 있습니다.";
+  elements.monitorQuestion.textContent = phase.quiz ? phase.quiz.questions.length + " / " + phase.quiz.questions.length : "- / -";
+  elements.answerCount.textContent = Object.keys(activeAnswers).length + "";
+}
+
+function renderLobby() {
+  if (!activeRoom) { return; }
+  const phase = getPhase(activeRoom);
+  const waiting = phase.state === "waiting";
+  const participants = Object.entries(activeLobby).sort(function (first, second) { return (Number(first[1].joinedAt) || 0) - (Number(second[1].joinedAt) || 0); });
+  elements.lobbyCount.textContent = participants.length + "명";
+  elements.lobbyCount.className = "state-badge " + (participants.length ? "live" : "waiting");
+  elements.lobbyHelp.textContent = waiting ? "대기 중인 참가자는 여기에서 확인하고 내보낼 수 있습니다." : "게임 진행 중에는 대기실 채팅과 내보내기 기능이 잠시 꺼집니다.";
+  elements.lobbyList.replaceChildren();
+  elements.lobbyEmpty.hidden = participants.length > 0;
+  participants.forEach(function (entry) {
+    const uid = entry[0];
+    const participant = entry[1] || {};
+    const item = document.createElement("li");
+    const info = document.createElement("div");
+    const name = document.createElement("strong");
+    const time = document.createElement("span");
+    const kick = document.createElement("button");
+    item.className = "lobby-participant";
+    name.textContent = participant.name || "참가자";
+    time.textContent = formatDate(participant.joinedAt) + " 입장";
+    kick.type = "button";
+    kick.className = "kick-button";
+    kick.textContent = kickingParticipantId === uid ? "내보내는 중" : "내보내기";
+    kick.disabled = !waiting || Boolean(kickingParticipantId);
+    kick.addEventListener("click", function () { kickParticipant(uid, participant.name || "참가자"); });
+    info.append(name, time);
+    item.append(info, kick);
+    elements.lobbyList.append(item);
+  });
+  renderAdminChat();
 }
 
 function renderAdminChat() {
-  const messages = getOrderedChatMessages();
+  const messages = Object.entries(waitingChat).sort(function (first, second) { return (Number(first[1].sentAt) || 0) - (Number(second[1].sentAt) || 0); }).slice(-100);
   elements.adminChatCount.textContent = messages.length + "개";
   elements.adminChatCount.className = "state-badge " + (messages.length ? "live" : "waiting");
   elements.adminChatMessages.replaceChildren();
-
   if (!messages.length) {
     const empty = document.createElement("p");
     empty.className = "chat-empty";
@@ -239,9 +492,8 @@ function renderAdminChat() {
     elements.adminChatMessages.append(empty);
     return;
   }
-
   messages.forEach(function (entry) {
-    const message = entry[1] || {};
+    const message = entry[1];
     const item = document.createElement("article");
     const meta = document.createElement("p");
     const name = document.createElement("strong");
@@ -249,323 +501,286 @@ function renderAdminChat() {
     const text = document.createElement("p");
     item.className = "chat-message";
     name.textContent = message.playerName || "참가자";
-    time.textContent = formatJoinedAt(message.sentAt).replace(" 입장", "");
+    time.textContent = formatDate(message.sentAt);
     text.textContent = message.text || "";
     meta.append(name, time);
     item.append(meta, text);
     elements.adminChatMessages.append(item);
   });
-  elements.adminChatMessages.scrollTop = elements.adminChatMessages.scrollHeight;
 }
 
-function renderLobby() {
-  const phase = getPhase(activeGame);
-  const isWaiting = phase.state === "waiting";
-  const participants = Object.entries(activeLobby || {}).sort(function (first, second) {
-    return (Number(first[1] && first[1].joinedAt) || 0) - (Number(second[1] && second[1].joinedAt) || 0);
-  });
-
-  elements.lobbyCount.textContent = participants.length.toLocaleString("ko-KR") + "명";
-  elements.lobbyCount.className = "state-badge " + (participants.length ? "live" : "waiting");
-  elements.lobbyHelp.textContent = isWaiting
-    ? "대기 중인 참가자는 여기에서 확인하고 내보낼 수 있습니다."
-    : "게임이 진행 중이라 대기실 채팅과 강퇴 기능이 잠시 꺼져 있습니다.";
-  elements.lobbyList.replaceChildren();
-  elements.lobbyEmpty.hidden = participants.length > 0;
-
-  participants.forEach(function (entry) {
-    const uid = entry[0];
-    const participant = entry[1] || {};
-    const item = document.createElement("li");
-    const info = document.createElement("div");
-    const name = document.createElement("strong");
-    const joined = document.createElement("span");
-    const kick = document.createElement("button");
-    item.className = "lobby-participant";
-    name.textContent = participant.name || "참가자";
-    joined.textContent = formatJoinedAt(participant.joinedAt);
-    info.append(name, joined);
-    kick.type = "button";
-    kick.className = "kick-button";
-    kick.textContent = kickingParticipantId === uid ? "내보내는 중" : "내보내기";
-    kick.disabled = !isWaiting || Boolean(kickingParticipantId);
-    kick.addEventListener("click", function () {
-      kickParticipant(uid, participant.name || "참가자");
-    });
-    item.append(info, kick);
-    elements.lobbyList.append(item);
-  });
-}
-
-async function kickParticipant(uid, name) {
-  if (getPhase(activeGame).state !== "waiting" || kickingParticipantId) {
-    return;
-  }
-
-  kickingParticipantId = uid;
-  renderLobby();
-  try {
-    await client.kickParticipant(uid, name);
-    elements.actionMessage.textContent = name + " 님을 대기실에서 내보냈습니다.";
-  } catch (error) {
-    elements.actionMessage.textContent = error.message || "참가자를 내보내지 못했습니다.";
-  } finally {
-    kickingParticipantId = "";
-    renderLobby();
-  }
-}
-
-function renderMonitor() {
-  const phase = getPhase(activeGame);
-  elements.monitorTimerBar.style.width = "0%";
-  renderResultRevealControl(phase);
-
-  if (phase.state === "waiting") {
-    setStateBadge("대기 중", "waiting");
-    elements.monitorTitle.textContent = "퀴즈 시작을 기다리고 있어요";
-    elements.monitorTimer.textContent = "--:--";
-    elements.monitorSubtitle.textContent = "시작 버튼을 누르면 5초 후 모든 참가자에게 첫 문제가 열립니다.";
-    elements.monitorQuestion.textContent = "- / -";
-    elements.answerCount.textContent = "0";
-    renderLobby();
-    return;
-  }
-
-  if (phase.state === "starting") {
-    setStateBadge("시작 준비", "starting");
-    elements.monitorTitle.textContent = phase.version.title;
-    elements.monitorTimer.textContent = formatSeconds(phase.startsIn);
-    elements.monitorSubtitle.textContent = "첫 문제가 동시에 열릴 때까지 남은 시간";
-    elements.monitorQuestion.textContent = "시작 전";
-    elements.answerCount.textContent = "0";
-    renderLobby();
-    return;
-  }
-
-  if (phase.state === "question") {
-    setStateBadge("진행 중", "live");
-    elements.monitorTitle.textContent = "문제 " + (phase.questionIndex + 1) + " 진행 중";
-    elements.monitorTimer.textContent = formatSeconds(phase.remainingMs);
-    elements.monitorSubtitle.textContent = "시간이 끝나면 자동으로 다음 문제로 넘어갑니다.";
-    elements.monitorQuestion.textContent = phase.questionIndex + 1 + " / " + phase.version.questions.length;
-    elements.answerCount.textContent = countCurrentAnswers(phase.questionIndex).toLocaleString("ko-KR");
-    elements.monitorTimerBar.style.width = (phase.remainingMs / phase.durationMs) * 100 + "%";
-    renderLobby();
-    return;
-  }
-
-  if (phase.state === "error") {
-    setStateBadge("설정 오류", "finished");
-    elements.monitorTitle.textContent = "퀴즈 버전을 찾지 못했습니다";
-    elements.monitorTimer.textContent = "--:--";
-    elements.monitorSubtitle.textContent = "게임을 초기화한 뒤 올바른 퀴즈 버전을 선택해 주세요.";
-    renderLobby();
-    return;
-  }
-
-  setStateBadge("종료", "finished");
-  elements.monitorTitle.textContent = "퀴즈가 종료됐어요";
-  elements.monitorTimer.textContent = "DONE";
-  elements.monitorSubtitle.textContent = "새 퀴즈를 시작하거나 대기 화면으로 초기화할 수 있습니다.";
-  elements.monitorQuestion.textContent = phase.version.questions.length + " / " + phase.version.questions.length;
-  elements.answerCount.textContent = Object.keys(activeAnswers).length.toLocaleString("ko-KR");
-  renderLobby();
-}
-
-function renderQuestionPlan() {
-  const version = getQuizVersion(elements.version.value || defaultQuizVersionId);
-  if (!version) {
-    return;
-  }
-
-  elements.versionDescription.textContent = version.description;
-  elements.questionPlan.replaceChildren();
-  version.questions.forEach(function (question, index) {
-    const item = document.createElement("li");
-    const prompt = document.createElement("strong");
-    const answer = document.createElement("span");
-    prompt.textContent = index + 1 + ". " + question.prompt;
-    answer.textContent = "정답: " + question.options[question.correctIndex];
-    item.append(prompt, answer);
-    elements.questionPlan.append(item);
-  });
-}
-
-function populateVersions() {
-  quizVersions.forEach(function (version) {
-    const option = document.createElement("option");
-    option.value = version.id;
-    option.textContent = version.title + " · " + version.questions.length + "문항";
-    elements.version.append(option);
-  });
-  elements.version.value = defaultQuizVersionId;
-  renderQuestionPlan();
-}
-
-function showDashboard() {
-  if (dashboardReady) {
-    return;
-  }
-
-  dashboardReady = true;
-  elements.login.hidden = true;
-  elements.dashboard.hidden = false;
-  elements.modeBadge.textContent = client.mode === "firebase" ? "실시간 연결" : "데모 모드";
-  elements.modeBadge.classList.toggle("demo", client.mode !== "firebase");
-  populateVersions();
-
-  client.subscribeGame(function (game) {
-    activeGame = game || { status: "waiting" };
-    unsubscribeAnswers();
-    activeAnswers = {};
-
-    if (activeGame.id) {
-      unsubscribeAnswers = client.subscribeAllAnswers(activeGame.id, function (answers) {
-        activeAnswers = answers || {};
-        renderMonitor();
-        renderScoreboard();
-      });
+async function saveQuiz() {
+  const quiz = clone(editorQuiz);
+  quiz.title = elements.quizTitle.value.trim();
+  quiz.description = elements.quizDescription.value.trim();
+  if (!quiz.title) { elements.quizEditorMessage.textContent = "퀴즈 이름을 입력해 주세요."; elements.quizTitle.focus(); return; }
+  for (let index = 0; index < quiz.questions.length; index += 1) {
+    const question = quiz.questions[index];
+    if (!question.prompt.trim() || question.options.some(function (option) { return !option.trim(); })) {
+      elements.quizEditorMessage.textContent = "문항 " + (index + 1) + "의 문제와 보기 4개를 모두 입력해 주세요.";
+      return;
     }
+    question.prompt = question.prompt.trim();
+    question.options = question.options.map(function (option) { return option.trim(); });
+  }
+  quiz.createdAt = savedQuizzes[quiz.id] ? savedQuizzes[quiz.id].createdAt : client.now();
+  elements.saveQuiz.disabled = true;
+  try {
+    await client.saveQuiz(quiz);
+    editorQuiz = clone(quiz);
+    elements.quizEditorMessage.textContent = "저장했습니다. 게임 진행 탭에서 이 퀴즈를 선택할 수 있어요.";
+  } catch (error) {
+    elements.quizEditorMessage.textContent = error.message || "퀴즈를 저장하지 못했습니다.";
+  } finally {
+    elements.saveQuiz.disabled = false;
+  }
+}
 
+async function deleteQuiz(quiz) {
+  if (!window.confirm("'" + quiz.title + "' 퀴즈를 삭제할까요? 이미 만든 게임방의 문제는 그대로 유지됩니다.")) { return; }
+  try {
+    await client.deleteQuiz(quiz.id);
+    if (editorQuiz.id === quiz.id) { editorQuiz = createBlankQuiz(); renderEditor(); }
+  } catch (error) {
+    elements.quizEditorMessage.textContent = error.message || "퀴즈를 삭제하지 못했습니다.";
+  }
+}
+
+async function createRoom() {
+  const quiz = savedQuizzes[elements.roomQuizSelect.value];
+  if (!quiz) { elements.roomSetupMessage.textContent = "먼저 저장한 퀴즈를 선택해 주세요."; return; }
+  const duration = limitNumber(elements.duration.value, 5, 600, 20);
+  const basePoints = limitNumber(elements.basePoints.value, 0, 10000, 100);
+  const speedPoints = limitNumber(elements.speedPoints.value, 0, 10000, 100);
+  elements.createRoom.disabled = true;
+  try {
+    const state = await client.createRoom({
+      title: quiz.title,
+      quizId: quiz.id,
+      quizSnapshot: createPublicQuizSnapshot(quiz),
+      status: "waiting",
+      questionDurationSec: duration,
+      basePoints: basePoints,
+      speedPoints: speedPoints,
+      questionCount: quiz.questions.length,
+      resultsRevealAt: null,
+      revealedAnswerKey: null,
+    }, {
+      answerKey: quiz.questions.map(function (question) { return question.correctIndex; }),
+    });
+    elements.roomSetupMessage.textContent = "새 게임방을 만들었습니다. QR 코드 또는 링크를 공유하세요.";
+    selectRoom(state.id);
+  } catch (error) {
+    elements.roomSetupMessage.textContent = error.message || "게임방을 만들지 못했습니다.";
+  } finally {
+    elements.createRoom.disabled = false;
+  }
+}
+
+function clearRoomSubscriptions() {
+  unsubscribeRoomState();
+  unsubscribeRoomSecrets();
+  unsubscribeRoomAnswers();
+  unsubscribeRoomLobby();
+  unsubscribeRoomChat();
+  unsubscribeRoomState = function () {};
+  unsubscribeRoomSecrets = function () {};
+  unsubscribeRoomAnswers = function () {};
+  unsubscribeRoomLobby = function () {};
+  unsubscribeRoomChat = function () {};
+}
+
+function selectRoom(roomId) {
+  clearRoomSubscriptions();
+  selectedRoomId = roomId;
+  activeRoom = null;
+  activeRoomSecret = null;
+  activeAnswers = {};
+  activeLobby = {};
+  waitingChat = {};
+  renderRoomList();
+  renderSelectedRoom();
+  unsubscribeRoomState = client.subscribeRoomState(roomId, function (state) {
+    activeRoom = state;
+    renderSelectedRoom();
+  });
+  unsubscribeRoomSecrets = client.subscribeRoomSecrets(roomId, function (secret) {
+    activeRoomSecret = secret;
+    renderResultRevealControl(getPhase(activeRoom));
+    renderScoreboard();
+  });
+  unsubscribeRoomAnswers = client.subscribeRoomAnswers(roomId, function (answers) {
+    activeAnswers = answers || {};
     renderMonitor();
     renderScoreboard();
   });
-
-  client.subscribeLobby(function (lobby) {
+  unsubscribeRoomLobby = client.subscribeRoomLobby(roomId, function (lobby) {
     activeLobby = lobby || {};
     renderLobby();
   });
-  client.subscribeWaitingChat(function (messages) {
+  unsubscribeRoomChat = client.subscribeRoomWaitingChat(roomId, function (messages) {
     waitingChat = messages || {};
     renderAdminChat();
   });
 }
 
 async function startGame() {
-  const version = getQuizVersion(elements.version.value);
-  if (!version) {
-    return;
-  }
-
-  if (version.questions.length !== 4) {
-    elements.actionMessage.textContent = "현재 게임은 정확히 4문항으로 구성해야 시작할 수 있습니다.";
-    return;
-  }
-
-  const duration = limitNumber(elements.duration.value, 5, 600, 20);
-  const basePoints = limitNumber(elements.basePoints.value, 0, 10000, 100);
-  const speedPoints = limitNumber(elements.speedPoints.value, 0, 10000, 100);
+  if (!activeRoom || !selectedRoomId) { return; }
   const startAt = client.now() + 5000;
-  const game = {
-    id: createGameId(startAt),
-    status: "live",
-    versionId: version.id,
-    startAt: startAt,
-    questionDurationSec: duration,
-    basePoints: basePoints,
-    speedPoints: speedPoints,
-    questionCount: version.questions.length,
-    createdAt: client.now(),
-  };
-
-  elements.start.disabled = true;
+  const questionCount = activeRoom.quizSnapshot && activeRoom.quizSnapshot.questions ? activeRoom.quizSnapshot.questions.length : 0;
+  const endsAt = startAt + Number(activeRoom.questionDurationSec) * 1000 * questionCount;
   try {
-    await client.saveGame(game);
-    elements.actionMessage.textContent = "설정이 저장됐습니다. 5초 후 1번 문제가 모든 참가자에게 열립니다.";
-  } catch (error) {
-    elements.actionMessage.textContent = error.message || "퀴즈를 시작하지 못했습니다.";
-  } finally {
-    elements.start.disabled = false;
-  }
+    await client.saveRoomState(selectedRoomId, Object.assign({}, activeRoom, { status: "live", startAt: startAt, endsAt: endsAt, resultsRevealAt: null, revealedAnswerKey: null }));
+    elements.actionMessage.textContent = "5초 후 모든 참가자에게 첫 문제가 동시에 열립니다.";
+  } catch (error) { elements.actionMessage.textContent = error.message || "퀴즈를 시작하지 못했습니다."; }
 }
 
 async function stopGame() {
-  if (!activeGame || !activeGame.id) {
-    elements.actionMessage.textContent = "진행 중인 퀴즈가 없습니다.";
-    return;
-  }
-
+  if (!activeRoom || !selectedRoomId) { return; }
   try {
-    await client.saveGame(Object.assign({}, activeGame, {
-      status: "finished",
-      finishedAt: client.now(),
-    }));
-    elements.actionMessage.textContent = "퀴즈를 종료했습니다.";
-  } catch (error) {
-    elements.actionMessage.textContent = error.message || "퀴즈를 종료하지 못했습니다.";
-  }
+    await client.saveRoomState(selectedRoomId, Object.assign({}, activeRoom, { status: "finished", finishedAt: client.now() }));
+    elements.actionMessage.textContent = "퀴즈를 종료했습니다. 원하는 때에 결과 공개 버튼을 누르세요.";
+  } catch (error) { elements.actionMessage.textContent = error.message || "퀴즈를 종료하지 못했습니다."; }
 }
 
 async function revealResults() {
-  const phase = getPhase(activeGame);
-  if (!activeGame || !activeGame.id || phase.state !== "finished" || activeGame.resultsRevealAt) {
-    return;
-  }
-
-  isRevealingResults = true;
+  const phase = getPhase(activeRoom);
+  if (!activeRoom || !selectedRoomId || phase.state !== "finished" || activeRoom.resultsRevealAt) { return; }
+  isRevealing = true;
   renderResultRevealControl(phase);
-  const revealAt = client.now() + 3200;
   try {
-    await client.saveGame(Object.assign({}, activeGame, {
+    await client.saveRoomState(selectedRoomId, Object.assign({}, activeRoom, {
       status: "finished",
-      finishedAt: activeGame.finishedAt || client.now(),
-      resultsRevealAt: revealAt,
+      finishedAt: activeRoom.finishedAt || client.now(),
+      resultsRevealAt: client.now() + 3200,
+      revealedAnswerKey: activeRoomSecret.answerKey,
     }));
     elements.actionMessage.textContent = "참가자 화면에서 3, 2, 1 카운트 후 결과가 공개됩니다.";
-  } catch (error) {
-    elements.actionMessage.textContent = error.message || "결과를 공개하지 못했습니다.";
-  } finally {
-    isRevealingResults = false;
-    renderMonitor();
-  }
+  } catch (error) { elements.actionMessage.textContent = error.message || "결과를 공개하지 못했습니다."; }
+  finally { isRevealing = false; renderMonitor(); }
 }
 
-async function resetGame() {
+async function resetRoom() {
+  if (!activeRoom || !selectedRoomId) { return; }
+  if (!window.confirm("새 대기실을 열까요? 이전 참가자·채팅·답안은 초기화됩니다.")) { return; }
   try {
-    await client.resetWaitingRoom();
-    elements.actionMessage.textContent = "새 대기실을 열었습니다. 이전 참가자 명단과 채팅은 초기화됐습니다.";
+    await client.resetRoom(selectedRoomId, activeRoom);
+    elements.actionMessage.textContent = "새 대기실을 열었습니다. QR 링크는 그대로 사용할 수 있습니다.";
+  } catch (error) { elements.actionMessage.textContent = error.message || "초기화하지 못했습니다."; }
+}
+
+async function deleteSelectedRoom() {
+  if (!activeRoom || !selectedRoomId || !window.confirm("이 게임방과 참가 기록을 완전히 삭제할까요? 이 작업은 되돌릴 수 없습니다.")) { return; }
+  try {
+    await client.deleteRoom(selectedRoomId);
+    clearRoomSubscriptions();
+    selectedRoomId = "";
+    activeRoom = null;
+    activeRoomSecret = null;
+    activeAnswers = {};
+    activeLobby = {};
+    waitingChat = {};
+    renderRoomList();
+    renderSelectedRoom();
+  } catch (error) { elements.actionMessage.textContent = error.message || "게임방을 삭제하지 못했습니다."; }
+}
+
+async function kickParticipant(uid, name) {
+  if (!activeRoom || getPhase(activeRoom).state !== "waiting" || kickingParticipantId) { return; }
+  kickingParticipantId = uid;
+  renderLobby();
+  try {
+    await client.kickRoomParticipant(selectedRoomId, uid, name);
+    elements.actionMessage.textContent = name + " 님을 대기실에서 내보냈습니다.";
+  } catch (error) { elements.actionMessage.textContent = error.message || "참가자를 내보내지 못했습니다."; }
+  finally { kickingParticipantId = ""; renderLobby(); }
+}
+
+async function copyRoomLink() {
+  const value = elements.roomLink.value;
+  try {
+    await navigator.clipboard.writeText(value);
+    elements.copyRoomMessage.textContent = "링크를 복사했습니다.";
   } catch (error) {
-    elements.actionMessage.textContent = error.message || "초기화하지 못했습니다.";
+    elements.roomLink.select();
+    document.execCommand("copy");
+    elements.copyRoomMessage.textContent = "링크를 복사했습니다.";
   }
 }
 
-elements.version.addEventListener("change", renderQuestionPlan);
+function showDashboard() {
+  if (dashboardReady) { return; }
+  dashboardReady = true;
+  elements.login.hidden = true;
+  elements.dashboard.hidden = false;
+  const user = client.getUser();
+  elements.userEmail.textContent = user && user.email ? user.email : "데모 관리자";
+  renderEditor();
+  renderTabs("builder");
+  unsubscribeQuizzes = client.subscribeOwnedQuizzes(function (quizzes) {
+    savedQuizzes = quizzes || {};
+    renderSavedQuizzes();
+    renderRoomQuizSelect();
+    renderEditor();
+  });
+  unsubscribeRooms = client.subscribeOwnedRooms(function (rooms) {
+    ownedRooms = rooms || {};
+    if (selectedRoomId && !ownedRooms[selectedRoomId]) {
+      clearRoomSubscriptions();
+      selectedRoomId = "";
+      activeRoom = null;
+    }
+    renderRoomList();
+    renderSelectedRoom();
+  });
+}
+
+function showLogin() {
+  dashboardReady = false;
+  unsubscribeQuizzes();
+  unsubscribeRooms();
+  clearRoomSubscriptions();
+  elements.dashboard.hidden = true;
+  elements.login.hidden = false;
+  elements.password.value = "";
+}
+
+elements.quizTitle.addEventListener("input", function () { editorQuiz.title = elements.quizTitle.value; });
+elements.quizDescription.addEventListener("input", function () { editorQuiz.description = elements.quizDescription.value; });
+elements.saveQuiz.addEventListener("click", saveQuiz);
+elements.newQuiz.addEventListener("click", function () { editorQuiz = createBlankQuiz(); elements.quizEditorMessage.textContent = ""; renderEditor(); });
+elements.createRoom.addEventListener("click", createRoom);
+elements.copyRoomLink.addEventListener("click", copyRoomLink);
 elements.start.addEventListener("click", startGame);
 elements.stop.addEventListener("click", stopGame);
-elements.revealResults.addEventListener("click", revealResults);
-elements.reset.addEventListener("click", resetGame);
+elements.reveal.addEventListener("click", revealResults);
+elements.reset.addEventListener("click", resetRoom);
+elements.deleteRoom.addEventListener("click", deleteSelectedRoom);
+elements.signOut.addEventListener("click", async function () { await client.signOut(); showLogin(); });
+elements.tabs.forEach(function (button) { button.addEventListener("click", function () { renderTabs(button.dataset.tab); }); });
+
+async function submitLogin(createAccount) {
+  elements.loginMessage.textContent = createAccount ? "계정을 만드는 중이에요…" : "로그인하는 중이에요…";
+  try {
+    if (createAccount) { await client.signUpAdmin(elements.email.value, elements.password.value); }
+    else { await client.signInAdmin(elements.email.value, elements.password.value); }
+    elements.password.value = "";
+    showDashboard();
+  } catch (error) {
+    elements.loginMessage.textContent = error.message || (createAccount ? "계정을 만들지 못했습니다." : "로그인하지 못했습니다.");
+  }
+}
+
+elements.loginForm.addEventListener("submit", function (event) { event.preventDefault(); submitLogin(false); });
+elements.signUp.addEventListener("click", function () { if (elements.loginForm.reportValidity()) { submitLogin(true); } });
 
 async function initialize() {
   client = await createQuizClient("admin");
   elements.notice.hidden = !client.notice;
   elements.notice.textContent = client.notice || "";
-
-  if (client.mode === "demo") {
-    showDashboard();
-  } else if (client.isAdmin()) {
-    showDashboard();
-  } else {
-    elements.login.hidden = false;
-  }
-
-  window.setInterval(function () {
-    if (dashboardReady) {
-      renderMonitor();
-    }
-  }, 100);
+  if (client.mode === "demo" || client.isAdmin()) { showDashboard(); }
+  else { elements.login.hidden = false; }
+  window.setInterval(function () { if (dashboardReady && activeRoom) { renderMonitor(); } }, 100);
 }
-
-elements.loginForm.addEventListener("submit", async function (event) {
-  event.preventDefault();
-  elements.loginMessage.textContent = "로그인하는 중이에요…";
-
-  try {
-    await client.signInAdmin(elements.email.value, elements.password.value);
-    elements.password.value = "";
-    showDashboard();
-  } catch (error) {
-    elements.loginMessage.textContent = error.message || "로그인하지 못했습니다.";
-  }
-});
 
 initialize();

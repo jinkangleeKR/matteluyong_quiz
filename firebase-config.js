@@ -10,9 +10,6 @@ export const firebaseConfig = {
   appId: "1:554976812071:web:5adaac6cbf8ef5304dc202",
 };
 
-/* Firebase Authentication에서 관리자 계정의 UID를 입력하세요. */
-export const firebaseAdminUid = "K5m96RUJ9fWW0NTiTz1rqMcUI1C2";
-
 export const isFirebaseConfigured = Object.keys(firebaseConfig).every(function (key) {
   return Boolean(firebaseConfig[key]);
 });
