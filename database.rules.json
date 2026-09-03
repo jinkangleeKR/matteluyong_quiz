@@ -10,7 +10,7 @@
         "$uid": {
           ".read": "auth != null && (auth.uid === $uid || auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2')",
           "$questionIndex": {
-            ".write": "auth != null && auth.uid === $uid && root.child('lobby').child($uid).exists() && !root.child('kicked').child($uid).exists() && root.child('activeGame').child('status').val() === 'live' && root.child('activeGame').child('id').val() === $gameId && now < root.child('activeGame').child('startAt').val() + root.child('activeGame').child('questionDurationSec').val() * root.child('activeGame').child('questionCount').val() && newData.hasChildren(['choice', 'playerName', 'answeredAt'])",
+            ".write": "auth != null && auth.uid === $uid && root.child('lobby').child($uid).exists() && !root.child('kicked').child($uid).exists() && root.child('activeGame').child('status').val() === 'live' && root.child('activeGame').child('id').val() === $gameId && newData.hasChildren(['choice', 'playerName', 'answeredAt'])",
             ".validate": "newData.child('choice').isNumber() && newData.child('choice').val() >= 0 && newData.child('choice').val() <= 3 && newData.child('playerName').isString() && newData.child('playerName').val().length > 0 && newData.child('playerName').val().length <= 20 && newData.child('answeredAt').isNumber()"
           }
         }
