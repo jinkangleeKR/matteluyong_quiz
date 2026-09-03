@@ -3,17 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="QR 코드로 접속하는 실시간 현장 퀴즈 참가 페이지입니다."
-    />
+    <meta name="description" content="QR 코드로 접속하는 실시간 현장 퀴즈 참가 페이지입니다." />
     <title>현장 퀴즈 | 참가 페이지</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Outfit:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -21,77 +15,82 @@
       <div class="glow glow-one" aria-hidden="true"></div>
       <div class="glow glow-two" aria-hidden="true"></div>
 
-      <section class="quiz-card participant-card" aria-labelledby="page-title">
-        <div class="card-topline">
-          <p class="eyebrow"><span></span> LIVE QUIZ</p>
-          <span id="connection-badge" class="mode-badge">연결 중</span>
-        </div>
-
-        <div id="connection-notice" class="connection-notice" hidden></div>
-
-        <div id="waiting-view">
-          <div class="icon-wrap" aria-hidden="true">
-            <svg viewBox="0 0 64 64">
-              <path d="M32 7 38.7 21l15.3 2.2-11.1 10.8 2.6 15.2L32 42l-13.5 7.2L21.1 34 10 23.2 25.3 21 32 7Z" />
-            </svg>
+      <div class="participant-stack">
+        <section class="quiz-card participant-card" aria-labelledby="page-title">
+          <div class="card-topline">
+            <p class="eyebrow"><span></span> LIVE QUIZ</p>
+            <span id="connection-badge" class="mode-badge">연결 중</span>
           </div>
-          <h1 id="page-title">퀴즈를 기다리고 있어요</h1>
-          <p id="waiting-message" class="intro">
-            진행자가 시작하면 첫 번째 문제가 자동으로 열립니다.
-          </p>
+          <div id="connection-notice" class="connection-notice" hidden></div>
 
-          <label class="name-field" for="player-name">
-            <span>참가자 이름</span>
-            <input id="player-name" type="text" maxlength="20" autocomplete="nickname" placeholder="이름 또는 닉네임" />
-          </label>
+          <div id="entry-view">
+            <div class="icon-wrap" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M32 7 38.7 21l15.3 2.2-11.1 10.8 2.6 15.2L32 42l-13.5 7.2L21.1 34 10 23.2 25.3 21 32 7Z" /></svg></div>
+            <h1 id="page-title">퀴즈 대기실 입장</h1>
+            <p id="entry-message" class="intro">닉네임을 입력하고 입장하면 대기실 채팅에 참여할 수 있어요.</p>
+            <label class="name-field" for="player-name">
+              <span>참가자 닉네임</span>
+              <input id="player-name" type="text" maxlength="20" autocomplete="nickname" placeholder="이름 또는 닉네임" />
+            </label>
+            <button id="enter-game" class="enter-game-button" type="button">게임 입장하기</button>
+            <p id="entry-status" class="answer-message" aria-live="polite"></p>
+          </div>
 
-          <div class="status-panel" role="status" aria-live="polite">
-            <span class="status-dot" aria-hidden="true"></span>
-            <div>
-              <p class="status-label">현재 상태</p>
-              <p id="quiz-status" class="status-text">퀴즈 시작을 기다리고 있어요</p>
+          <div id="waiting-view" hidden>
+            <div class="icon-wrap" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M32 7 38.7 21l15.3 2.2-11.1 10.8 2.6 15.2L32 42l-13.5 7.2L21.1 34 10 23.2 25.3 21 32 7Z" /></svg></div>
+            <h1>퀴즈를 기다리고 있어요</h1>
+            <p id="waiting-message" class="intro">진행자가 시작하면 첫 번째 문제가 자동으로 열립니다.</p>
+            <div class="status-panel" role="status" aria-live="polite">
+              <span class="status-dot" aria-hidden="true"></span>
+              <div>
+                <p class="status-label">현재 상태</p>
+                <p id="quiz-status" class="status-text">대기실에 입장했어요</p>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div id="question-view" hidden aria-live="polite">
-          <div class="question-meta">
-            <span id="question-count" class="question-count">문제 1 / 4</span>
-            <span id="timer-text" class="timer-text">00:00</span>
+          <div id="kicked-view" hidden>
+            <div class="icon-wrap muted-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M32 7 38.7 21l15.3 2.2-11.1 10.8 2.6 15.2L32 42l-13.5 7.2L21.1 34 10 23.2 25.3 21 32 7Z" /></svg></div>
+            <h1>대기실에서 나갔어요</h1>
+            <p class="intro">진행자가 이 참가자를 대기실에서 내보냈습니다. 다음 게임이 열리면 다시 입장할 수 있어요.</p>
           </div>
-          <div class="timer-track" aria-label="남은 시간">
-            <div id="timer-bar" class="timer-bar"></div>
-          </div>
-          <p id="timer-guide" class="timer-guide">남은 시간 안에 답을 하나만 선택해 주세요.</p>
-          <h1 id="question-text" class="question-title"></h1>
-          <div id="answer-options" class="answer-options" role="group" aria-label="답안 선택"></div>
-          <div class="answer-submit-area">
-            <button id="submit-answer" class="submit-answer-button" type="button" disabled>답안 제출하기</button>
-          </div>
-          <p id="answer-message" class="answer-message"></p>
-        </div>
 
-        <div id="finished-view" hidden>
-          <div class="icon-wrap finish-icon" aria-hidden="true">
-            <svg viewBox="0 0 64 64">
-              <path d="M32 7 38.7 21l15.3 2.2-11.1 10.8 2.6 15.2L32 42l-13.5 7.2L21.1 34 10 23.2 25.3 21 32 7Z" />
-            </svg>
+          <div id="question-view" hidden aria-live="polite">
+            <div class="question-meta"><span id="question-count" class="question-count">문제 1 / 4</span><span id="timer-text" class="timer-text">00:00</span></div>
+            <div class="timer-track" aria-label="남은 시간"><div id="timer-bar" class="timer-bar"></div></div>
+            <p id="timer-guide" class="timer-guide">남은 시간 안에 답을 하나만 선택해 주세요.</p>
+            <h1 id="question-text" class="question-title"></h1>
+            <div id="answer-options" class="answer-options" role="group" aria-label="답안 선택"></div>
+            <div class="answer-submit-area"><button id="submit-answer" class="submit-answer-button" type="button" disabled>답안 제출하기</button></div>
+            <p id="answer-message" class="answer-message"></p>
           </div>
-          <p class="eyebrow result-eyebrow">QUIZ COMPLETE</p>
-          <h1>퀴즈가 종료됐어요</h1>
-          <p class="intro">참여해 주셔서 고마워요.</p>
-          <div class="score-panel">
-            <p>내 점수</p>
-            <strong id="total-score">0</strong>
-            <span>점</span>
+
+          <div id="finished-view" hidden>
+            <div class="icon-wrap finish-icon" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M32 7 38.7 21l15.3 2.2-11.1 10.8 2.6 15.2L32 42l-13.5 7.2L21.1 34 10 23.2 25.3 21 32 7Z" /></svg></div>
+            <p class="eyebrow result-eyebrow">QUIZ COMPLETE</p>
+            <h1>퀴즈가 종료됐어요</h1>
+            <p class="intro">참여해 주셔서 고마워요.</p>
+            <div class="score-panel"><p>내 점수</p><strong id="total-score">0</strong><span>점</span></div>
+            <p id="result-detail" class="guide-message"></p>
           </div>
-          <p id="result-detail" class="guide-message"></p>
-        </div>
-      </section>
+        </section>
+
+        <section id="chat-panel" class="chat-card" hidden aria-labelledby="chat-title">
+          <div class="chat-heading">
+            <div><p class="section-kicker">WAITING ROOM</p><h2 id="chat-title">대기실 채팅</h2></div>
+            <span id="chat-count" class="state-badge waiting">0개</span>
+          </div>
+          <div id="chat-messages" class="chat-messages" role="log" aria-live="polite"></div>
+          <form id="chat-form" class="chat-form">
+            <label class="sr-only" for="chat-input">채팅 메시지</label>
+            <input id="chat-input" type="text" maxlength="180" placeholder="참가자와 대화해 보세요" autocomplete="off" />
+            <button class="chat-send-button" type="submit">전송</button>
+          </form>
+          <p id="chat-status" class="chat-status" aria-live="polite"></p>
+        </section>
+      </div>
 
       <p class="footer-note">문제는 모든 참가자에게 같은 시간에 자동으로 바뀝니다.</p>
     </main>
-
     <script type="module" src="app.js"></script>
   </body>
 </html>

@@ -35,17 +35,39 @@ const elements = {
   scoreboardCount: document.querySelector("#scoreboard-count"),
   scoreboardBody: document.querySelector("#scoreboard-body"),
   scoreboardEmpty: document.querySelector("#scoreboard-empty"),
+  lobbyCount: document.querySelector("#lobby-count"),
+  lobbyHelp: document.querySelector("#lobby-help"),
+  lobbyList: document.querySelector("#lobby-list"),
+  lobbyEmpty: document.querySelector("#lobby-empty"),
+  adminChatCount: document.querySelector("#admin-chat-count"),
+  adminChatMessages: document.querySelector("#admin-chat-messages"),
 };
 
 let client;
 let activeGame = { status: "waiting" };
 let activeAnswers = {};
+let activeLobby = {};
+let waitingChat = {};
 let unsubscribeAnswers = function () {};
 let dashboardReady = false;
+let kickingParticipantId = "";
 
 function formatSeconds(milliseconds) {
   const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
   return String(Math.floor(seconds / 60)).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+}
+
+function formatJoinedAt(value) {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return "방금 입장";
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(timestamp)) + " 입장";
 }
 
 function limitNumber(value, minimum, maximum, fallback) {
@@ -173,6 +195,103 @@ function renderScoreboard() {
   });
 }
 
+function getOrderedChatMessages() {
+  return Object.entries(waitingChat || {}).sort(function (first, second) {
+    const firstTime = Number(first[1] && first[1].sentAt) || 0;
+    const secondTime = Number(second[1] && second[1].sentAt) || 0;
+    return firstTime - secondTime || first[0].localeCompare(second[0]);
+  }).slice(-100);
+}
+
+function renderAdminChat() {
+  const messages = getOrderedChatMessages();
+  elements.adminChatCount.textContent = messages.length + "개";
+  elements.adminChatCount.className = "state-badge " + (messages.length ? "live" : "waiting");
+  elements.adminChatMessages.replaceChildren();
+
+  if (!messages.length) {
+    const empty = document.createElement("p");
+    empty.className = "chat-empty";
+    empty.textContent = "아직 채팅이 없습니다.";
+    elements.adminChatMessages.append(empty);
+    return;
+  }
+
+  messages.forEach(function (entry) {
+    const message = entry[1] || {};
+    const item = document.createElement("article");
+    const meta = document.createElement("p");
+    const name = document.createElement("strong");
+    const time = document.createElement("span");
+    const text = document.createElement("p");
+    item.className = "chat-message";
+    name.textContent = message.playerName || "참가자";
+    time.textContent = formatJoinedAt(message.sentAt).replace(" 입장", "");
+    text.textContent = message.text || "";
+    meta.append(name, time);
+    item.append(meta, text);
+    elements.adminChatMessages.append(item);
+  });
+  elements.adminChatMessages.scrollTop = elements.adminChatMessages.scrollHeight;
+}
+
+function renderLobby() {
+  const phase = getPhase(activeGame);
+  const isWaiting = phase.state === "waiting";
+  const participants = Object.entries(activeLobby || {}).sort(function (first, second) {
+    return (Number(first[1] && first[1].joinedAt) || 0) - (Number(second[1] && second[1].joinedAt) || 0);
+  });
+
+  elements.lobbyCount.textContent = participants.length.toLocaleString("ko-KR") + "명";
+  elements.lobbyCount.className = "state-badge " + (participants.length ? "live" : "waiting");
+  elements.lobbyHelp.textContent = isWaiting
+    ? "대기 중인 참가자는 여기에서 확인하고 내보낼 수 있습니다."
+    : "게임이 진행 중이라 대기실 채팅과 강퇴 기능이 잠시 꺼져 있습니다.";
+  elements.lobbyList.replaceChildren();
+  elements.lobbyEmpty.hidden = participants.length > 0;
+
+  participants.forEach(function (entry) {
+    const uid = entry[0];
+    const participant = entry[1] || {};
+    const item = document.createElement("li");
+    const info = document.createElement("div");
+    const name = document.createElement("strong");
+    const joined = document.createElement("span");
+    const kick = document.createElement("button");
+    item.className = "lobby-participant";
+    name.textContent = participant.name || "참가자";
+    joined.textContent = formatJoinedAt(participant.joinedAt);
+    info.append(name, joined);
+    kick.type = "button";
+    kick.className = "kick-button";
+    kick.textContent = kickingParticipantId === uid ? "내보내는 중" : "내보내기";
+    kick.disabled = !isWaiting || Boolean(kickingParticipantId);
+    kick.addEventListener("click", function () {
+      kickParticipant(uid, participant.name || "참가자");
+    });
+    item.append(info, kick);
+    elements.lobbyList.append(item);
+  });
+}
+
+async function kickParticipant(uid, name) {
+  if (getPhase(activeGame).state !== "waiting" || kickingParticipantId) {
+    return;
+  }
+
+  kickingParticipantId = uid;
+  renderLobby();
+  try {
+    await client.kickParticipant(uid, name);
+    elements.actionMessage.textContent = name + " 님을 대기실에서 내보냈습니다.";
+  } catch (error) {
+    elements.actionMessage.textContent = error.message || "참가자를 내보내지 못했습니다.";
+  } finally {
+    kickingParticipantId = "";
+    renderLobby();
+  }
+}
+
 function renderMonitor() {
   const phase = getPhase(activeGame);
   elements.monitorTimerBar.style.width = "0%";
@@ -184,6 +303,7 @@ function renderMonitor() {
     elements.monitorSubtitle.textContent = "시작 버튼을 누르면 5초 후 모든 참가자에게 첫 문제가 열립니다.";
     elements.monitorQuestion.textContent = "- / -";
     elements.answerCount.textContent = "0";
+    renderLobby();
     return;
   }
 
@@ -194,6 +314,7 @@ function renderMonitor() {
     elements.monitorSubtitle.textContent = "첫 문제가 동시에 열릴 때까지 남은 시간";
     elements.monitorQuestion.textContent = "시작 전";
     elements.answerCount.textContent = "0";
+    renderLobby();
     return;
   }
 
@@ -205,6 +326,7 @@ function renderMonitor() {
     elements.monitorQuestion.textContent = phase.questionIndex + 1 + " / " + phase.version.questions.length;
     elements.answerCount.textContent = countCurrentAnswers(phase.questionIndex).toLocaleString("ko-KR");
     elements.monitorTimerBar.style.width = (phase.remainingMs / phase.durationMs) * 100 + "%";
+    renderLobby();
     return;
   }
 
@@ -213,6 +335,7 @@ function renderMonitor() {
     elements.monitorTitle.textContent = "퀴즈 버전을 찾지 못했습니다";
     elements.monitorTimer.textContent = "--:--";
     elements.monitorSubtitle.textContent = "게임을 초기화한 뒤 올바른 퀴즈 버전을 선택해 주세요.";
+    renderLobby();
     return;
   }
 
@@ -222,6 +345,7 @@ function renderMonitor() {
   elements.monitorSubtitle.textContent = "새 퀴즈를 시작하거나 대기 화면으로 초기화할 수 있습니다.";
   elements.monitorQuestion.textContent = phase.version.questions.length + " / " + phase.version.questions.length;
   elements.answerCount.textContent = Object.keys(activeAnswers).length.toLocaleString("ko-KR");
+  renderLobby();
 }
 
 function renderQuestionPlan() {
@@ -282,6 +406,15 @@ function showDashboard() {
     renderMonitor();
     renderScoreboard();
   });
+
+  client.subscribeLobby(function (lobby) {
+    activeLobby = lobby || {};
+    renderLobby();
+  });
+  client.subscribeWaitingChat(function (messages) {
+    waitingChat = messages || {};
+    renderAdminChat();
+  });
 }
 
 async function startGame() {
@@ -341,8 +474,8 @@ async function stopGame() {
 
 async function resetGame() {
   try {
-    await client.saveGame({ status: "waiting", updatedAt: client.now() });
-    elements.actionMessage.textContent = "참가자 화면을 대기 상태로 바꿨습니다.";
+    await client.resetWaitingRoom();
+    elements.actionMessage.textContent = "새 대기실을 열었습니다. 이전 참가자 명단과 채팅은 초기화됐습니다.";
   } catch (error) {
     elements.actionMessage.textContent = error.message || "초기화하지 못했습니다.";
   }

@@ -10,10 +10,34 @@
         "$uid": {
           ".read": "auth != null && (auth.uid === $uid || auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2')",
           "$questionIndex": {
-            ".write": "auth != null && auth.uid === $uid && newData.hasChildren(['choice', 'playerName', 'answeredAt'])",
-            ".validate": "newData.child('choice').isNumber() && newData.child('choice').val() >= 0 && newData.child('choice').val() <= 3 && newData.child('playerName').isString() && newData.child('playerName').val().length <= 20 && newData.child('answeredAt').isNumber()"
+            ".write": "auth != null && auth.uid === $uid && root.child('lobby').child($uid).exists() && !root.child('kicked').child($uid).exists() && root.child('activeGame').child('status').val() === 'live' && root.child('activeGame').child('id').val() === $gameId && newData.hasChildren(['choice', 'playerName', 'answeredAt'])",
+            ".validate": "newData.child('choice').isNumber() && newData.child('choice').val() >= 0 && newData.child('choice').val() <= 3 && newData.child('playerName').isString() && newData.child('playerName').val().length > 0 && newData.child('playerName').val().length <= 20 && newData.child('answeredAt').isNumber()"
           }
         }
+      }
+    },
+    "lobby": {
+      ".read": "auth != null && auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2'",
+      ".write": "auth != null && auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2')",
+        ".write": "(auth != null && auth.uid === $uid && !root.child('kicked').child($uid).exists() && root.child('activeGame').child('status').val() != 'live' && root.child('activeGame').child('status').val() != 'finished') || (auth != null && auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2')",
+        ".validate": "newData.hasChildren(['name', 'joinedAt']) && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('name').val().length <= 20 && newData.child('joinedAt').isNumber()"
+      }
+    },
+    "kicked": {
+      ".read": "auth != null && auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2'",
+      ".write": "auth != null && auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2')"
+      }
+    },
+    "waitingChat": {
+      ".read": "auth != null && (auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2' || (root.child('lobby').child(auth.uid).exists() && !root.child('kicked').child(auth.uid).exists()))",
+      ".write": "auth != null && auth.uid === 'K5m96RUJ9fWW0NTiTz1rqMcUI1C2'",
+      "$messageId": {
+        ".write": "auth != null && !data.exists() && root.child('lobby').child(auth.uid).exists() && !root.child('kicked').child(auth.uid).exists() && root.child('activeGame').child('status').val() === 'waiting'",
+        ".validate": "newData.hasChildren(['uid', 'playerName', 'text', 'sentAt']) && newData.child('uid').val() === auth.uid && newData.child('playerName').isString() && newData.child('playerName').val().length > 0 && newData.child('playerName').val().length <= 20 && newData.child('text').isString() && newData.child('text').val().length > 0 && newData.child('text').val().length <= 180 && newData.child('sentAt').isNumber()"
       }
     }
   }

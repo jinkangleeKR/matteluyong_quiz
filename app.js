@@ -2,16 +2,22 @@ import { calculateAnswerScore, getQuizVersion } from "./quiz-data.js";
 import { createQuizClient } from "./realtime-store.js";
 
 const PLAYER_NAME_KEY = "matteluyong.quiz.player-name";
+const MAX_CHAT_MESSAGES = 100;
 
 const elements = {
   connectionBadge: document.querySelector("#connection-badge"),
   connectionNotice: document.querySelector("#connection-notice"),
+  entryView: document.querySelector("#entry-view"),
   waitingView: document.querySelector("#waiting-view"),
+  kickedView: document.querySelector("#kicked-view"),
   questionView: document.querySelector("#question-view"),
   finishedView: document.querySelector("#finished-view"),
+  entryMessage: document.querySelector("#entry-message"),
+  entryStatus: document.querySelector("#entry-status"),
+  playerName: document.querySelector("#player-name"),
+  enterGame: document.querySelector("#enter-game"),
   waitingMessage: document.querySelector("#waiting-message"),
   quizStatus: document.querySelector("#quiz-status"),
-  playerName: document.querySelector("#player-name"),
   questionCount: document.querySelector("#question-count"),
   timerText: document.querySelector("#timer-text"),
   timerBar: document.querySelector("#timer-bar"),
@@ -21,14 +27,28 @@ const elements = {
   answerMessage: document.querySelector("#answer-message"),
   totalScore: document.querySelector("#total-score"),
   resultDetail: document.querySelector("#result-detail"),
+  chatPanel: document.querySelector("#chat-panel"),
+  chatCount: document.querySelector("#chat-count"),
+  chatMessages: document.querySelector("#chat-messages"),
+  chatForm: document.querySelector("#chat-form"),
+  chatInput: document.querySelector("#chat-input"),
+  chatStatus: document.querySelector("#chat-status"),
 };
 
 let client;
 let activeGame = { status: "waiting" };
 let ownAnswers = {};
+let ownLobbyEntry = null;
+let kickInfo = null;
+let waitingChat = {};
 let unsubscribeAnswers = function () {};
+let unsubscribeChat = function () {};
+let chatSubscribed = false;
 let renderedScreen = "";
+let renderedChat = "";
 let isSubmittingAnswer = false;
+let isEnteringGame = false;
+let isSendingChat = false;
 let draftGameId = "";
 let draftQuestionIndex = -1;
 let draftChoice = null;
@@ -42,6 +62,19 @@ function formatSeconds(milliseconds) {
   const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
   const minutes = Math.floor(seconds / 60);
   return String(minutes).padStart(2, "0") + ":" + String(seconds % 60).padStart(2, "0");
+}
+
+function formatChatTime(value) {
+  const timestamp = Number(value);
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(timestamp));
 }
 
 function getPhase(game) {
@@ -58,14 +91,13 @@ function getPhase(game) {
     return { state: "finished", version: version };
   }
 
-  const now = client.now();
-  const startsIn = Number(game.startAt) - now;
+  const startsIn = Number(game.startAt) - client.now();
   if (startsIn > 0) {
     return { state: "starting", version: version, startsIn: startsIn };
   }
 
   const durationMs = Number(game.questionDurationSec) * 1000;
-  const elapsed = Math.max(0, now - Number(game.startAt));
+  const elapsed = Math.max(0, client.now() - Number(game.startAt));
   const questionIndex = Math.floor(elapsed / durationMs);
 
   if (questionIndex >= version.questions.length) {
@@ -100,9 +132,29 @@ function getScore(game, version) {
 }
 
 function setVisible(view) {
+  elements.entryView.hidden = view !== "entry";
   elements.waitingView.hidden = view !== "waiting";
+  elements.kickedView.hidden = view !== "kicked";
   elements.questionView.hidden = view !== "question";
   elements.finishedView.hidden = view !== "finished";
+}
+
+function renderEntry(phase) {
+  setVisible("entry");
+  elements.enterGame.disabled = isEnteringGame;
+
+  if (phase.state === "question" || phase.state === "starting") {
+    elements.entryMessage.textContent = "퀴즈가 이미 진행 중이에요. 다음 대기실이 열리면 입장할 수 있어요.";
+    elements.enterGame.disabled = true;
+  } else if (phase.state === "finished") {
+    elements.entryMessage.textContent = "이번 퀴즈가 종료됐어요. 진행자가 대기실을 열면 입장할 수 있어요.";
+    elements.enterGame.disabled = true;
+  } else if (phase.state === "error") {
+    elements.entryMessage.textContent = phase.message;
+    elements.enterGame.disabled = true;
+  } else {
+    elements.entryMessage.textContent = "닉네임을 입력하고 입장하면 대기실 채팅에 참여할 수 있어요.";
+  }
 }
 
 function renderWaiting(phase) {
@@ -118,7 +170,7 @@ function renderWaiting(phase) {
     elements.quizStatus.textContent = "퀴즈 설정을 확인해 주세요";
     elements.waitingMessage.textContent = phase.message;
   } else {
-    elements.quizStatus.textContent = "퀴즈 시작을 기다리고 있어요";
+    elements.quizStatus.textContent = "대기실에 입장했어요";
     elements.waitingMessage.textContent = "진행자가 시작하면 첫 번째 문제가 자동으로 열립니다.";
   }
 }
@@ -127,7 +179,6 @@ function renderQuestion(phase) {
   setVisible("question");
   elements.questionCount.textContent = "문제 " + (phase.questionIndex + 1) + " / " + phase.version.questions.length;
   elements.questionText.textContent = phase.question.prompt;
-  // 문항별로 버튼을 새로 만들기 때문에 이전 문항의 선택 색상은 절대 남지 않습니다.
   elements.answerOptions.replaceChildren();
 
   const submittedAnswer = ownAnswers[String(phase.questionIndex)];
@@ -168,7 +219,6 @@ function renderQuestion(phase) {
     button.addEventListener("click", function () {
       chooseAnswer(phase, index);
     });
-
     elements.answerOptions.append(button);
   });
 }
@@ -213,29 +263,103 @@ function updateTimer(phase) {
     return;
   }
 
-  if (phase.state === "starting") {
+  if (phase.state === "starting" && ownLobbyEntry) {
     elements.waitingMessage.textContent = formatSeconds(phase.startsIn) + " 뒤에 첫 문제가 열립니다.";
+  }
+}
+
+function getOrderedMessages() {
+  return Object.entries(waitingChat || {}).sort(function (first, second) {
+    const firstTime = Number(first[1] && first[1].sentAt) || 0;
+    const secondTime = Number(second[1] && second[1].sentAt) || 0;
+    return firstTime - secondTime || first[0].localeCompare(second[0]);
+  }).slice(-MAX_CHAT_MESSAGES);
+}
+
+function renderChat(phase) {
+  const enabled = Boolean(ownLobbyEntry && !kickInfo && phase.state === "waiting");
+  const messages = enabled ? getOrderedMessages() : [];
+  const signature = enabled + "/" + messages.map(function (entry) {
+    const message = entry[1] || {};
+    return entry[0] + ":" + message.sentAt + ":" + message.text;
+  }).join("|");
+
+  elements.chatPanel.hidden = !enabled;
+  if (renderedChat === signature) {
+    return;
+  }
+  renderedChat = signature;
+  elements.chatCount.textContent = messages.length + "개";
+  elements.chatCount.className = "state-badge " + (messages.length ? "live" : "waiting");
+  elements.chatMessages.replaceChildren();
+
+  if (!messages.length) {
+    const empty = document.createElement("p");
+    empty.className = "chat-empty";
+    empty.textContent = "첫 번째 인사를 남겨 보세요.";
+    elements.chatMessages.append(empty);
+  } else {
+    messages.forEach(function (entry) {
+      const message = entry[1] || {};
+      const item = document.createElement("article");
+      const meta = document.createElement("p");
+      const name = document.createElement("strong");
+      const time = document.createElement("span");
+      const text = document.createElement("p");
+      item.className = "chat-message";
+      name.textContent = message.playerName || "참가자";
+      time.textContent = formatChatTime(message.sentAt);
+      text.textContent = message.text || "";
+      meta.append(name, time);
+      item.append(meta, text);
+      elements.chatMessages.append(item);
+    });
+    elements.chatMessages.scrollTop = elements.chatMessages.scrollHeight;
+  }
+}
+
+function syncChatSubscription() {
+  const shouldSubscribe = Boolean(ownLobbyEntry && !kickInfo);
+  if (shouldSubscribe && !chatSubscribed) {
+    chatSubscribed = true;
+    unsubscribeChat = client.subscribeWaitingChat(function (messages) {
+      waitingChat = messages || {};
+      renderedChat = "";
+      render();
+    });
+  } else if (!shouldSubscribe && chatSubscribed) {
+    unsubscribeChat();
+    unsubscribeChat = function () {};
+    chatSubscribed = false;
+    waitingChat = {};
   }
 }
 
 function render() {
   const phase = getPhase(activeGame);
   syncDraft(phase);
+  const screen = kickInfo ? "kicked" : !ownLobbyEntry ? "entry" : phase.state === "question" ? "question" : phase.state === "finished" ? "finished" : "waiting";
   const answer = phase.state === "question" ? ownAnswers[String(phase.questionIndex)] : null;
   const screenKey = [
     activeGame.id || "waiting",
+    screen,
     phase.state,
     phase.questionIndex,
     answer ? answer.choice : "",
     draftChoice === null ? "" : draftChoice,
     isSubmittingAnswer ? "submitting" : "ready",
+    isEnteringGame ? "entering" : "",
   ].join("/");
 
   if (renderedScreen !== screenKey) {
     renderedScreen = screenKey;
-    if (phase.state === "question") {
+    if (screen === "entry") {
+      renderEntry(phase);
+    } else if (screen === "kicked") {
+      setVisible("kicked");
+    } else if (screen === "question") {
       renderQuestion(phase);
-    } else if (phase.state === "finished") {
+    } else if (screen === "finished") {
       renderFinished(phase);
     } else {
       renderWaiting(phase);
@@ -243,32 +367,61 @@ function render() {
   }
 
   updateTimer(phase);
+  renderChat(phase);
+}
+
+async function enterGame() {
+  const phase = getPhase(activeGame);
+  const name = elements.playerName.value.trim();
+
+  if (phase.state !== "waiting") {
+    elements.entryStatus.textContent = "지금은 입장할 수 없어요. 다음 대기실이 열릴 때 다시 시도해 주세요.";
+    return;
+  }
+  if (!name) {
+    elements.entryStatus.textContent = "닉네임을 입력해 주세요.";
+    elements.playerName.focus();
+    return;
+  }
+
+  isEnteringGame = true;
+  elements.entryStatus.textContent = "대기실에 입장하는 중이에요…";
+  renderedScreen = "";
+  render();
+
+  try {
+    await client.joinLobby(name);
+    window.localStorage.setItem(PLAYER_NAME_KEY, name);
+    elements.entryStatus.textContent = "";
+  } catch (error) {
+    elements.entryStatus.textContent = error.message || "대기실에 입장하지 못했습니다. 다시 시도해 주세요.";
+  } finally {
+    isEnteringGame = false;
+    renderedScreen = "";
+    render();
+  }
 }
 
 async function submitAnswer() {
   const phase = getPhase(activeGame);
   const currentAnswer = ownAnswers[String(phase.questionIndex)];
-  if (phase.state !== "question" || draftChoice === null || isSubmittingAnswer) {
+  if (phase.state !== "question" || draftChoice === null || isSubmittingAnswer || !ownLobbyEntry) {
     return;
   }
-
   if (currentAnswer && currentAnswer.choice === draftChoice) {
     elements.answerMessage.textContent = "이미 제출한 답입니다. 다른 답을 고른 뒤 다시 제출할 수 있어요.";
     return;
   }
 
-  const savedName = window.localStorage.getItem(PLAYER_NAME_KEY) || "";
-  const playerName = savedName.trim() || "참가자";
   isSubmittingAnswer = true;
   renderedScreen = "";
   render();
-
   try {
     await client.submitAnswer({
       gameId: activeGame.id,
       questionIndex: phase.questionIndex,
       choice: draftChoice,
-      playerName: playerName,
+      playerName: ownLobbyEntry.name || "참가자",
     });
   } catch (error) {
     elements.answerMessage.textContent = "답안 제출에 실패했어요. 연결 상태를 확인해 주세요.";
@@ -279,7 +432,30 @@ async function submitAnswer() {
   }
 }
 
+async function sendChat(event) {
+  event.preventDefault();
+  const phase = getPhase(activeGame);
+  const text = elements.chatInput.value.trim();
+  if (!text || isSendingChat || !ownLobbyEntry || phase.state !== "waiting") {
+    return;
+  }
+
+  isSendingChat = true;
+  elements.chatStatus.textContent = "보내는 중이에요…";
+  try {
+    await client.sendWaitingChat({ playerName: ownLobbyEntry.name, text: text });
+    elements.chatInput.value = "";
+    elements.chatStatus.textContent = "";
+  } catch (error) {
+    elements.chatStatus.textContent = error.message || "메시지를 보내지 못했습니다. 다시 시도해 주세요.";
+  } finally {
+    isSendingChat = false;
+  }
+}
+
+elements.enterGame.addEventListener("click", enterGame);
 elements.submitAnswer.addEventListener("click", submitAnswer);
+elements.chatForm.addEventListener("submit", sendChat);
 
 async function initialize() {
   client = await createQuizClient("participant");
@@ -292,7 +468,6 @@ async function initialize() {
     activeGame = game || { status: "waiting" };
     unsubscribeAnswers();
     ownAnswers = {};
-
     if (activeGame.id) {
       unsubscribeAnswers = client.subscribeMyAnswers(activeGame.id, function (answers) {
         ownAnswers = answers || {};
@@ -300,11 +475,24 @@ async function initialize() {
         render();
       });
     }
-
     renderedScreen = "";
     render();
   });
 
+  client.subscribeLobbyEntry(function (entry) {
+    ownLobbyEntry = entry || null;
+    syncChatSubscription();
+    renderedScreen = "";
+    renderedChat = "";
+    render();
+  });
+  client.subscribeKick(function (kick) {
+    kickInfo = kick || null;
+    syncChatSubscription();
+    renderedScreen = "";
+    renderedChat = "";
+    render();
+  });
   window.setInterval(render, 100);
 }
 

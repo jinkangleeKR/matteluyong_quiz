@@ -107,6 +107,30 @@
           </div>
         </section>
 
+        <section class="admin-section lobby-section">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">WAITING ROOM</p>
+              <h2>대기실 참가자 · 채팅</h2>
+            </div>
+            <span id="lobby-count" class="state-badge waiting">0명</span>
+          </div>
+          <p id="lobby-help" class="scoreboard-help">대기 중인 참가자는 여기에서 확인하고 내보낼 수 있습니다.</p>
+          <div class="lobby-management-grid">
+            <div class="lobby-list-wrap">
+              <ul id="lobby-list" class="lobby-list"></ul>
+              <p id="lobby-empty" class="lobby-empty">아직 대기실에 입장한 참가자가 없습니다.</p>
+            </div>
+            <div class="admin-chat-preview">
+              <div class="chat-preview-heading">
+                <h3>대기실 채팅</h3>
+                <span id="admin-chat-count" class="state-badge waiting">0개</span>
+              </div>
+              <div id="admin-chat-messages" class="chat-messages admin-chat-messages" role="log" aria-live="polite"></div>
+            </div>
+          </div>
+        </section>
+
         <section class="admin-section questions-section">
           <div class="section-heading">
             <div>
