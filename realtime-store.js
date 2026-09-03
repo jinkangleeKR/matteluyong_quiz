@@ -145,12 +145,27 @@ function createDemoClient(notice) {
         if (current) { current.delete(listener); }
       };
     },
+    subscribeLeaderboard: function (gameId, listener) {
+      const listeners = answerListeners.get(gameId) || new Set();
+      listeners.add(listener);
+      answerListeners.set(gameId, listeners);
+      listener(getAnswers(gameId));
+      return function () {
+        const current = answerListeners.get(gameId);
+        if (current) { current.delete(listener); }
+      };
+    },
     subscribeLobbyEntry: function (listener) {
       lobbyEntryListeners.add(listener);
       listener(getLobby()[playerId] || null);
       return function () { lobbyEntryListeners.delete(listener); };
     },
     subscribeLobby: function (listener) {
+      lobbyListeners.add(listener);
+      listener(getLobby());
+      return function () { lobbyListeners.delete(listener); };
+    },
+    subscribeFinishedLobby: function (listener) {
       lobbyListeners.add(listener);
       listener(getLobby());
       return function () { lobbyListeners.delete(listener); };
@@ -245,6 +260,12 @@ async function createFirebaseClient(role) {
   databaseModule.onValue(databaseModule.ref(database, ".info/serverTimeOffset"), function (snapshot) {
     serverOffset = Number(snapshot.val()) || 0;
   });
+  window.addEventListener("pagehide", function () {
+    databaseModule.goOffline(database);
+  });
+  window.addEventListener("pageshow", function () {
+    databaseModule.goOnline(database);
+  });
   if (role === "participant" && !auth.currentUser) {
     await authModule.signInAnonymously(auth);
   }
@@ -298,6 +319,11 @@ async function createFirebaseClient(role) {
         listener(snapshot.val() || {});
       });
     },
+    subscribeLeaderboard: function (gameId, listener) {
+      return databaseModule.onValue(databaseModule.ref(database, "answers/" + gameId), function (snapshot) {
+        listener(snapshot.val() || {});
+      });
+    },
     subscribeLobbyEntry: function (listener) {
       const user = getUser();
       if (!user) {
@@ -310,6 +336,11 @@ async function createFirebaseClient(role) {
     },
     subscribeLobby: function (listener) {
       requireAdmin();
+      return databaseModule.onValue(databaseModule.ref(database, "lobby"), function (snapshot) {
+        listener(snapshot.val() || {});
+      });
+    },
+    subscribeFinishedLobby: function (listener) {
       return databaseModule.onValue(databaseModule.ref(database, "lobby"), function (snapshot) {
         listener(snapshot.val() || {});
       });
@@ -351,10 +382,11 @@ async function createFirebaseClient(role) {
     },
     kickParticipant: async function (uid, name) {
       requireAdmin();
-      await databaseModule.update(databaseModule.ref(database), {
-        ["lobby/" + uid]: null,
-        ["kicked/" + uid]: { name: name || "참가자", kickedAt: databaseModule.serverTimestamp() },
+      await databaseModule.set(databaseModule.ref(database, "kicked/" + uid), {
+        name: name || "참가자",
+        kickedAt: databaseModule.serverTimestamp(),
       });
+      await databaseModule.remove(databaseModule.ref(database, "lobby/" + uid));
     },
     sendWaitingChat: async function (message) {
       const user = requireUser();

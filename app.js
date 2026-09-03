@@ -27,6 +27,9 @@ const elements = {
   answerMessage: document.querySelector("#answer-message"),
   totalScore: document.querySelector("#total-score"),
   resultDetail: document.querySelector("#result-detail"),
+  finalRankingCount: document.querySelector("#final-ranking-count"),
+  finalRankingList: document.querySelector("#final-ranking-list"),
+  finalRankingEmpty: document.querySelector("#final-ranking-empty"),
   chatPanel: document.querySelector("#chat-panel"),
   chatCount: document.querySelector("#chat-count"),
   chatMessages: document.querySelector("#chat-messages"),
@@ -41,9 +44,17 @@ let ownAnswers = {};
 let ownLobbyEntry = null;
 let kickInfo = null;
 let waitingChat = {};
+let finalAnswers = {};
+let finalLobby = {};
 let unsubscribeAnswers = function () {};
 let unsubscribeChat = function () {};
+let unsubscribeFinalAnswers = function () {};
+let unsubscribeFinalLobby = function () {};
 let chatSubscribed = false;
+let finalRankingGameId = "";
+let finalRankingReady = false;
+let finalAnswersReady = false;
+let finalLobbyReady = false;
 let renderedScreen = "";
 let renderedChat = "";
 let isSubmittingAnswer = false;
@@ -253,6 +264,78 @@ function renderFinished(phase) {
   const score = getScore(activeGame, phase.version);
   elements.totalScore.textContent = score.total.toLocaleString("ko-KR");
   elements.resultDetail.textContent = "정답 " + score.correct + " / " + phase.version.questions.length + "문항";
+  renderFinalRanking(phase.version);
+}
+
+function getFinalLeaderboard(version) {
+  const participantIds = new Set(Object.keys(finalLobby || {}));
+  Object.keys(finalAnswers || {}).forEach(function (playerId) {
+    participantIds.add(playerId);
+  });
+  if (ownLobbyEntry && client.playerId) {
+    participantIds.add(client.playerId);
+  }
+
+  return Array.from(participantIds).map(function (playerId) {
+    const answers = finalAnswers[playerId] || {};
+    const participant = finalLobby[playerId] || {};
+    let name = participant.name || "참가자";
+    let score = 0;
+    let correct = 0;
+
+    version.questions.forEach(function (question, index) {
+      const answer = answers[String(index)];
+      if (!answer) {
+        return;
+      }
+      if (!participant.name && answer.playerName) {
+        name = answer.playerName;
+      }
+      const gained = calculateAnswerScore(answer, question, activeGame, index);
+      score += gained;
+      if (answer.choice === question.correctIndex) {
+        correct += 1;
+      }
+    });
+
+    return { id: playerId, name: name, score: score, correct: correct };
+  }).sort(function (first, second) {
+    if (second.score !== first.score) {
+      return second.score - first.score;
+    }
+    if (second.correct !== first.correct) {
+      return second.correct - first.correct;
+    }
+    return first.name.localeCompare(second.name, "ko");
+  });
+}
+
+function renderFinalRanking(version) {
+  const leaderboard = getFinalLeaderboard(version);
+  const isLoading = !finalRankingGameId || !finalRankingReady;
+  elements.finalRankingList.replaceChildren();
+  elements.finalRankingCount.textContent = isLoading ? "집계 중" : leaderboard.length.toLocaleString("ko-KR") + "명";
+  elements.finalRankingCount.className = "state-badge " + (leaderboard.length ? "live" : "waiting");
+  elements.finalRankingEmpty.hidden = isLoading || leaderboard.length > 0;
+  elements.finalRankingEmpty.textContent = isLoading
+    ? "순위를 불러오는 중이에요…"
+    : "이번 퀴즈에 입장한 참가자가 없습니다.";
+
+  leaderboard.forEach(function (player, index) {
+    const item = document.createElement("li");
+    const rank = document.createElement("span");
+    const name = document.createElement("strong");
+    const score = document.createElement("span");
+    item.className = "final-ranking-item";
+    if (player.id === client.playerId) {
+      item.classList.add("is-me");
+    }
+    rank.textContent = String(index + 1);
+    name.textContent = player.name + " · 정답 " + player.correct + "개";
+    score.textContent = player.score.toLocaleString("ko-KR") + "점";
+    item.append(rank, name, score);
+    elements.finalRankingList.append(item);
+  });
 }
 
 function updateTimer(phase) {
@@ -335,9 +418,55 @@ function syncChatSubscription() {
   }
 }
 
+function stopFinalRankingSubscriptions() {
+  unsubscribeFinalAnswers();
+  unsubscribeFinalLobby();
+  unsubscribeFinalAnswers = function () {};
+  unsubscribeFinalLobby = function () {};
+  finalRankingGameId = "";
+  finalRankingReady = false;
+  finalAnswersReady = false;
+  finalLobbyReady = false;
+  finalAnswers = {};
+  finalLobby = {};
+}
+
+function syncFinalRankingSubscriptions(phase) {
+  const shouldSubscribe = Boolean(
+    phase.state === "finished" && activeGame.id && ownLobbyEntry && !kickInfo
+  );
+  if (!shouldSubscribe) {
+    if (finalRankingGameId) {
+      stopFinalRankingSubscriptions();
+    }
+    return;
+  }
+  if (finalRankingGameId === activeGame.id) {
+    return;
+  }
+
+  stopFinalRankingSubscriptions();
+  finalRankingGameId = activeGame.id;
+  unsubscribeFinalAnswers = client.subscribeLeaderboard(activeGame.id, function (answers) {
+    finalAnswers = answers || {};
+    finalAnswersReady = true;
+    finalRankingReady = finalAnswersReady && finalLobbyReady;
+    renderedScreen = "";
+    render();
+  });
+  unsubscribeFinalLobby = client.subscribeFinishedLobby(function (lobby) {
+    finalLobby = lobby || {};
+    finalLobbyReady = true;
+    finalRankingReady = finalAnswersReady && finalLobbyReady;
+    renderedScreen = "";
+    render();
+  });
+}
+
 function render() {
   const phase = getPhase(activeGame);
   syncDraft(phase);
+  syncFinalRankingSubscriptions(phase);
   const screen = kickInfo ? "kicked" : !ownLobbyEntry ? "entry" : phase.state === "question" ? "question" : phase.state === "finished" ? "finished" : "waiting";
   const answer = phase.state === "question" ? ownAnswers[String(phase.questionIndex)] : null;
   const screenKey = [
