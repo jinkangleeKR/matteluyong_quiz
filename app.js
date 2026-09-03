@@ -17,6 +17,7 @@ const elements = {
   timerBar: document.querySelector("#timer-bar"),
   questionText: document.querySelector("#question-text"),
   answerOptions: document.querySelector("#answer-options"),
+  submitAnswer: document.querySelector("#submit-answer"),
   answerMessage: document.querySelector("#answer-message"),
   totalScore: document.querySelector("#total-score"),
   resultDetail: document.querySelector("#result-detail"),
@@ -28,6 +29,9 @@ let ownAnswers = {};
 let unsubscribeAnswers = function () {};
 let renderedScreen = "";
 let isSubmittingAnswer = false;
+let draftGameId = "";
+let draftQuestionIndex = -1;
+let draftChoice = null;
 
 elements.playerName.value = window.localStorage.getItem(PLAYER_NAME_KEY) || "";
 elements.playerName.addEventListener("input", function () {
@@ -104,6 +108,7 @@ function setVisible(view) {
 function renderWaiting(phase) {
   setVisible("waiting");
   elements.answerOptions.replaceChildren();
+  elements.submitAnswer.disabled = true;
   elements.answerMessage.textContent = "";
 
   if (phase.state === "starting") {
@@ -126,10 +131,23 @@ function renderQuestion(phase) {
   elements.answerOptions.replaceChildren();
 
   const submittedAnswer = ownAnswers[String(phase.questionIndex)];
-  if (submittedAnswer) {
-    elements.answerMessage.textContent = "선택한 답은 변경할 수 있어요. 시간이 끝나기 전 최종 답이 제출됩니다.";
+  const isChangingAnswer = submittedAnswer && draftChoice !== submittedAnswer.choice;
+  const canSubmit = draftChoice !== null && !isSubmittingAnswer && (!submittedAnswer || isChangingAnswer);
+  elements.submitAnswer.disabled = !canSubmit;
+  elements.submitAnswer.textContent = submittedAnswer
+    ? (isChangingAnswer ? "변경한 답 제출하기" : "제출한 답")
+    : "답안 제출하기";
+
+  if (isSubmittingAnswer) {
+    elements.answerMessage.textContent = "답안을 제출하는 중이에요…";
+  } else if (submittedAnswer && isChangingAnswer) {
+    elements.answerMessage.textContent = "새 답을 골랐어요. 제출 버튼을 눌러 변경을 확정하세요.";
+  } else if (submittedAnswer) {
+    elements.answerMessage.textContent = "답안을 제출했습니다. 다른 답을 고른 뒤 다시 제출하면 변경할 수 있어요.";
+  } else if (draftChoice !== null) {
+    elements.answerMessage.textContent = "선택한 답을 제출 버튼으로 확정해 주세요.";
   } else {
-    elements.answerMessage.textContent = "시간 안에는 답을 바꿀 수 있습니다.";
+    elements.answerMessage.textContent = "답을 고른 뒤 제출 버튼을 눌러 확정해 주세요.";
   }
 
   phase.question.options.forEach(function (option, index) {
@@ -143,16 +161,41 @@ function renderQuestion(phase) {
     button.type = "button";
     button.append(marker, text);
 
-    if (submittedAnswer && submittedAnswer.choice === index) {
+    if (draftChoice === index) {
       button.classList.add("selected");
     }
 
     button.addEventListener("click", function () {
-      submitAnswer(phase.questionIndex, index);
+      chooseAnswer(phase, index);
     });
 
     elements.answerOptions.append(button);
   });
+}
+
+function syncDraft(phase) {
+  if (phase.state !== "question") {
+    draftGameId = "";
+    draftQuestionIndex = -1;
+    draftChoice = null;
+    return;
+  }
+
+  if (draftGameId !== activeGame.id || draftQuestionIndex !== phase.questionIndex) {
+    draftGameId = activeGame.id;
+    draftQuestionIndex = phase.questionIndex;
+    draftChoice = null;
+  }
+}
+
+function chooseAnswer(phase, choice) {
+  if (isSubmittingAnswer || phase.questionIndex !== draftQuestionIndex) {
+    return;
+  }
+
+  draftChoice = choice;
+  renderedScreen = "";
+  render();
 }
 
 function renderFinished(phase) {
@@ -177,12 +220,15 @@ function updateTimer(phase) {
 
 function render() {
   const phase = getPhase(activeGame);
+  syncDraft(phase);
   const answer = phase.state === "question" ? ownAnswers[String(phase.questionIndex)] : null;
   const screenKey = [
     activeGame.id || "waiting",
     phase.state,
     phase.questionIndex,
     answer ? answer.choice : "",
+    draftChoice === null ? "" : draftChoice,
+    isSubmittingAnswer ? "submitting" : "ready",
   ].join("/");
 
   if (renderedScreen !== screenKey) {
@@ -199,36 +245,41 @@ function render() {
   updateTimer(phase);
 }
 
-async function submitAnswer(questionIndex, choice) {
+async function submitAnswer() {
   const phase = getPhase(activeGame);
-  const currentAnswer = ownAnswers[String(questionIndex)];
-  if (phase.state !== "question" || phase.questionIndex !== questionIndex || isSubmittingAnswer) {
+  const currentAnswer = ownAnswers[String(phase.questionIndex)];
+  if (phase.state !== "question" || draftChoice === null || isSubmittingAnswer) {
     return;
   }
 
-  if (currentAnswer && currentAnswer.choice === choice) {
-    elements.answerMessage.textContent = "현재 선택한 답입니다. 다른 답을 눌러 변경할 수 있어요.";
+  if (currentAnswer && currentAnswer.choice === draftChoice) {
+    elements.answerMessage.textContent = "이미 제출한 답입니다. 다른 답을 고른 뒤 다시 제출할 수 있어요.";
     return;
   }
 
   const savedName = window.localStorage.getItem(PLAYER_NAME_KEY) || "";
   const playerName = savedName.trim() || "참가자";
-  elements.answerMessage.textContent = currentAnswer ? "답안을 변경하는 중이에요…" : "답안을 제출하는 중이에요…";
   isSubmittingAnswer = true;
+  renderedScreen = "";
+  render();
 
   try {
     await client.submitAnswer({
       gameId: activeGame.id,
-      questionIndex: questionIndex,
-      choice: choice,
+      questionIndex: phase.questionIndex,
+      choice: draftChoice,
       playerName: playerName,
     });
   } catch (error) {
-    elements.answerMessage.textContent = "답안 변경에 실패했어요. 연결 상태를 확인해 주세요.";
+    elements.answerMessage.textContent = "답안 제출에 실패했어요. 연결 상태를 확인해 주세요.";
   } finally {
     isSubmittingAnswer = false;
+    renderedScreen = "";
+    render();
   }
 }
+
+elements.submitAnswer.addEventListener("click", submitAnswer);
 
 async function initialize() {
   client = await createQuizClient("participant");

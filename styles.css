@@ -358,6 +358,32 @@ input::placeholder {
   background: #d77c28;
 }
 
+.answer-submit-area {
+  margin-top: 17px;
+}
+
+.submit-answer-button {
+  width: 100%;
+  min-height: 52px;
+  color: #fff;
+  background: #2c2924;
+  border-radius: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 150ms ease, background 150ms ease;
+}
+
+.submit-answer-button:hover:not(:disabled) {
+  background: #11100e;
+  transform: translateY(-1px);
+}
+
+.submit-answer-button:disabled {
+  color: #a5a09a;
+  background: #e9e5e0;
+  cursor: not-allowed;
+}
+
 .answer-message {
   min-height: 1.5em;
   margin: 13px 0 0;
