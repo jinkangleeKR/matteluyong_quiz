@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="robots" content="noindex" />
-    <title>현장 퀴즈 | 관리자</title>
+    <title>Live Quiz Demo | 관리자</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -15,7 +15,7 @@
       <header class="admin-header">
         <div>
           <p class="eyebrow"><span></span> QUIZ STUDIO</p>
-          <h1>나만의 현장 퀴즈</h1>
+          <h1>Live Quiz Demo</h1>
         </div>
         <a class="text-link" href="./">참가자 화면 보기 ↗</a>
       </header>
@@ -51,12 +51,13 @@
             <section class="admin-section quiz-editor-section">
               <div class="section-heading">
                 <div><p class="section-kicker">QUIZ BUILDER</p><h2 id="editor-title">새 퀴즈 만들기</h2></div>
-                <span class="state-badge waiting">4문항</span>
+                <span id="question-count-badge" class="state-badge waiting">1문항</span>
               </div>
               <label class="field-label" for="quiz-title"><span>퀴즈 이름</span><input id="quiz-title" type="text" maxlength="60" placeholder="예: 2026 봄 축제 퀴즈" /></label>
               <label class="field-label" for="quiz-description"><span>간단한 설명</span><input id="quiz-description" type="text" maxlength="120" placeholder="참가자에게 보여줄 설명 (선택)" /></label>
-              <p class="field-help">각 문항은 보기 4개와 정답 1개로 구성됩니다.</p>
+              <p class="field-help">문항을 추가해 개수를 조절하세요. 객관식(4지선다)과 주관식을 문항별로 섞어 만들 수 있습니다.</p>
               <div id="question-editor" class="question-editor"></div>
+              <button id="add-question" class="quiet-button wide-button add-question-button" type="button">+ 문항 추가</button>
               <div class="admin-actions">
                 <button id="save-quiz" class="primary-button" type="button">퀴즈 저장하기</button>
                 <button id="new-quiz" class="quiet-button" type="button">새 퀴즈</button>

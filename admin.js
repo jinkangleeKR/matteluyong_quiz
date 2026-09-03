@@ -1,7 +1,6 @@
-import { calculateAnswerScore } from "./quiz-data.js";
+import { calculateAnswerScore, isCorrectAnswer, isShortAnswerQuestion } from "./quiz-data.js";
 import { createQuizClient, createQuizId } from "./realtime-store.js";
 
-const QUESTION_COUNT = 4;
 const elements = {
   notice: document.querySelector("#admin-notice"),
   login: document.querySelector("#admin-login"),
@@ -20,6 +19,8 @@ const elements = {
   quizTitle: document.querySelector("#quiz-title"),
   quizDescription: document.querySelector("#quiz-description"),
   questionEditor: document.querySelector("#question-editor"),
+  questionCountBadge: document.querySelector("#question-count-badge"),
+  addQuestion: document.querySelector("#add-question"),
   saveQuiz: document.querySelector("#save-quiz"),
   newQuiz: document.querySelector("#new-quiz"),
   quizEditorMessage: document.querySelector("#quiz-editor-message"),
@@ -96,9 +97,18 @@ function createBlankQuiz() {
     id: createQuizId(),
     title: "",
     description: "",
-    questions: Array.from({ length: QUESTION_COUNT }, function (_, index) {
-      return { id: "q" + (index + 1), prompt: "", options: ["", "", "", ""], correctIndex: 0 };
-    }),
+    questions: [createQuestion()],
+  };
+}
+
+function createQuestion() {
+  return {
+    id: createQuizId().replace("quiz-", "question-"),
+    type: "multiple-choice",
+    prompt: "",
+    options: ["", "", "", ""],
+    correctIndex: 0,
+    acceptedAnswers: [],
   };
 }
 
@@ -135,14 +145,21 @@ function createPublicQuizSnapshot(quiz) {
     title: quiz.title,
     description: quiz.description || "",
     questions: quiz.questions.map(function (question) {
-      return { id: question.id, prompt: question.prompt, options: question.options };
+      const type = isShortAnswerQuestion(question) ? "short-answer" : "multiple-choice";
+      return { id: question.id, type: type, prompt: question.prompt, options: type === "multiple-choice" ? question.options : [] };
     }),
   };
 }
 
 function questionForScoring(question, index) {
   const answerKey = activeRoomSecret && activeRoomSecret.answerKey;
-  return Object.assign({}, question, { correctIndex: Array.isArray(answerKey) ? Number(answerKey[index]) : -1 });
+  const key = Array.isArray(answerKey) ? answerKey[index] : null;
+  if (isShortAnswerQuestion(question)) {
+    const acceptedAnswers = Array.isArray(key) ? key : key && Array.isArray(key.acceptedAnswers) ? key.acceptedAnswers : [];
+    return Object.assign({}, question, { type: "short-answer", acceptedAnswers: acceptedAnswers });
+  }
+  const correctIndex = typeof key === "number" ? key : key && Number.isFinite(Number(key.correctIndex)) ? Number(key.correctIndex) : -1;
+  return Object.assign({}, question, { type: "multiple-choice", correctIndex: correctIndex });
 }
 
 function getPhase(room) {
@@ -193,45 +210,100 @@ function renderQuestionEditor() {
   editorQuiz.questions.forEach(function (question, questionIndex) {
     const card = document.createElement("fieldset");
     const legend = document.createElement("legend");
+    const topRow = document.createElement("div");
+    const typeLabel = document.createElement("label");
+    const typeText = document.createElement("span");
+    const typeSelect = document.createElement("select");
+    const remove = document.createElement("button");
     const prompt = document.createElement("input");
-    const options = document.createElement("div");
-    const answerRow = document.createElement("label");
-    const answerLabel = document.createElement("span");
-    const answerSelect = document.createElement("select");
+    const isShortAnswer = isShortAnswerQuestion(question);
     card.className = "question-edit-card";
     legend.textContent = "문항 " + (questionIndex + 1);
+    topRow.className = "question-edit-top-row";
+    typeLabel.className = "question-type-field";
+    typeText.textContent = "문제 유형";
+    [
+      ["multiple-choice", "객관식 (4지선다)"],
+      ["short-answer", "주관식"],
+    ].forEach(function (entry) {
+      const option = document.createElement("option");
+      option.value = entry[0];
+      option.textContent = entry[1];
+      typeSelect.append(option);
+    });
+    typeSelect.value = isShortAnswer ? "short-answer" : "multiple-choice";
+    typeSelect.addEventListener("change", function () {
+      editorQuiz.questions[questionIndex].type = typeSelect.value;
+      renderQuestionEditor();
+    });
+    typeLabel.append(typeText, typeSelect);
+    remove.type = "button";
+    remove.className = "quiet-button compact-button question-remove-button";
+    remove.textContent = "문항 삭제";
+    remove.disabled = editorQuiz.questions.length === 1;
+    remove.addEventListener("click", function () {
+      editorQuiz.questions.splice(questionIndex, 1);
+      renderEditor();
+    });
+    topRow.append(typeLabel, remove);
     prompt.type = "text";
     prompt.className = "question-prompt-input";
     prompt.maxLength = 240;
     prompt.placeholder = "문제를 입력하세요";
     prompt.value = question.prompt;
     prompt.addEventListener("input", function () { editorQuiz.questions[questionIndex].prompt = prompt.value; });
-    options.className = "option-edit-grid";
-    question.options.forEach(function (option, optionIndex) {
-      const label = document.createElement("label");
-      const marker = document.createElement("span");
-      const input = document.createElement("input");
-      marker.textContent = String.fromCharCode(65 + optionIndex);
-      input.type = "text";
-      input.maxLength = 120;
-      input.placeholder = "보기 " + String.fromCharCode(65 + optionIndex);
-      input.value = option;
-      input.addEventListener("input", function () { editorQuiz.questions[questionIndex].options[optionIndex] = input.value; });
-      label.append(marker, input);
-      options.append(label);
-    });
-    answerLabel.textContent = "정답";
-    for (let index = 0; index < 4; index += 1) {
-      const option = document.createElement("option");
-      option.value = String(index);
-      option.textContent = String.fromCharCode(65 + index) + "번";
-      answerSelect.append(option);
+    card.append(legend, topRow, prompt);
+    if (isShortAnswer) {
+      const answerRow = document.createElement("label");
+      const answerLabel = document.createElement("span");
+      const answerInput = document.createElement("input");
+      const help = document.createElement("p");
+      answerRow.className = "short-answer-key-row";
+      answerLabel.textContent = "정답";
+      answerInput.type = "text";
+      answerInput.maxLength = 240;
+      answerInput.placeholder = "예: 서울, Seoul";
+      answerInput.value = (Array.isArray(question.acceptedAnswers) ? question.acceptedAnswers : []).join(", ");
+      answerInput.addEventListener("input", function () {
+        editorQuiz.questions[questionIndex].acceptedAnswers = answerInput.value.split(",").map(function (value) { return value.trim(); }).filter(Boolean);
+      });
+      help.className = "field-help short-answer-help";
+      help.textContent = "여러 정답은 쉼표(,)로 나눠 입력하세요. 공백과 대소문자는 구분하지 않습니다.";
+      answerRow.append(answerLabel, answerInput);
+      card.append(answerRow, help);
+    } else {
+      const options = document.createElement("div");
+      const answerRow = document.createElement("label");
+      const answerLabel = document.createElement("span");
+      const answerSelect = document.createElement("select");
+      question.options = Array.from({ length: 4 }, function (_, optionIndex) { return (question.options || [])[optionIndex] || ""; });
+      options.className = "option-edit-grid";
+      question.options.forEach(function (option, optionIndex) {
+        const label = document.createElement("label");
+        const marker = document.createElement("span");
+        const input = document.createElement("input");
+        marker.textContent = String.fromCharCode(65 + optionIndex);
+        input.type = "text";
+        input.maxLength = 120;
+        input.placeholder = "보기 " + String.fromCharCode(65 + optionIndex);
+        input.value = option;
+        input.addEventListener("input", function () { editorQuiz.questions[questionIndex].options[optionIndex] = input.value; });
+        label.append(marker, input);
+        options.append(label);
+      });
+      answerLabel.textContent = "정답";
+      for (let index = 0; index < 4; index += 1) {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = String.fromCharCode(65 + index) + "번";
+        answerSelect.append(option);
+      }
+      answerSelect.value = String(Number(question.correctIndex) || 0);
+      answerSelect.addEventListener("change", function () { editorQuiz.questions[questionIndex].correctIndex = Number(answerSelect.value); });
+      answerRow.className = "answer-key-row";
+      answerRow.append(answerLabel, answerSelect);
+      card.append(options, answerRow);
     }
-    answerSelect.value = String(question.correctIndex);
-    answerSelect.addEventListener("change", function () { editorQuiz.questions[questionIndex].correctIndex = Number(answerSelect.value); });
-    answerRow.className = "answer-key-row";
-    answerRow.append(answerLabel, answerSelect);
-    card.append(legend, prompt, options, answerRow);
     elements.questionEditor.append(card);
   });
 }
@@ -240,6 +312,7 @@ function renderEditor() {
   elements.editorTitle.textContent = savedQuizzes[editorQuiz.id] ? "퀴즈 수정하기" : "새 퀴즈 만들기";
   elements.quizTitle.value = editorQuiz.title || "";
   elements.quizDescription.value = editorQuiz.description || "";
+  elements.questionCountBadge.textContent = editorQuiz.questions.length + "문항";
   renderQuestionEditor();
 }
 
@@ -375,7 +448,7 @@ function getLeaderboard() {
       if (answer.playerName) { name = answer.playerName; }
       const scoredQuestion = questionForScoring(question, index);
       score += calculateAnswerScore(answer, scoredQuestion, activeRoom, index);
-      if (answer.choice === scoredQuestion.correctIndex) { correct += 1; }
+      if (isCorrectAnswer(answer, scoredQuestion)) { correct += 1; }
     });
     return { id: playerId, name: name, score: score, correct: correct };
   }).sort(function (first, second) {
@@ -526,12 +599,28 @@ async function saveQuiz() {
   if (!quiz.title) { elements.quizEditorMessage.textContent = "퀴즈 이름을 입력해 주세요."; elements.quizTitle.focus(); return; }
   for (let index = 0; index < quiz.questions.length; index += 1) {
     const question = quiz.questions[index];
-    if (!question.prompt.trim() || question.options.some(function (option) { return !option.trim(); })) {
-      elements.quizEditorMessage.textContent = "문항 " + (index + 1) + "의 문제와 보기 4개를 모두 입력해 주세요.";
+    question.type = isShortAnswerQuestion(question) ? "short-answer" : "multiple-choice";
+    if (!question.prompt.trim()) {
+      elements.quizEditorMessage.textContent = "문항 " + (index + 1) + "의 문제를 입력해 주세요.";
       return;
     }
     question.prompt = question.prompt.trim();
-    question.options = question.options.map(function (option) { return option.trim(); });
+    if (question.type === "short-answer") {
+      question.acceptedAnswers = (Array.isArray(question.acceptedAnswers) ? question.acceptedAnswers : []).map(function (answer) { return answer.trim(); }).filter(Boolean);
+      if (!question.acceptedAnswers.length) {
+        elements.quizEditorMessage.textContent = "주관식 문항 " + (index + 1) + "의 정답을 하나 이상 입력해 주세요.";
+        return;
+      }
+      question.options = [];
+    } else {
+      question.options = Array.from({ length: 4 }, function (_, optionIndex) { return (question.options || [])[optionIndex] || ""; }).map(function (option) { return option.trim(); });
+      if (question.options.some(function (option) { return !option; })) {
+        elements.quizEditorMessage.textContent = "객관식 문항 " + (index + 1) + "의 보기 4개를 모두 입력해 주세요.";
+        return;
+      }
+      question.correctIndex = limitNumber(question.correctIndex, 0, 3, 0);
+      question.acceptedAnswers = [];
+    }
   }
   quiz.createdAt = savedQuizzes[quiz.id] ? savedQuizzes[quiz.id].createdAt : client.now();
   elements.saveQuiz.disabled = true;
@@ -576,7 +665,11 @@ async function createRoom() {
       resultsRevealAt: null,
       revealedAnswerKey: null,
     }, {
-      answerKey: quiz.questions.map(function (question) { return question.correctIndex; }),
+      answerKey: quiz.questions.map(function (question) {
+        return isShortAnswerQuestion(question)
+          ? { type: "short-answer", acceptedAnswers: question.acceptedAnswers }
+          : { type: "multiple-choice", correctIndex: question.correctIndex };
+      }),
     });
     elements.roomSetupMessage.textContent = "새 게임방을 만들었습니다. QR 코드 또는 링크를 공유하세요.";
     selectRoom(state.id);
@@ -758,6 +851,12 @@ function showLogin() {
 elements.quizTitle.addEventListener("input", function () { editorQuiz.title = elements.quizTitle.value; });
 elements.quizDescription.addEventListener("input", function () { editorQuiz.description = elements.quizDescription.value; });
 elements.saveQuiz.addEventListener("click", saveQuiz);
+elements.addQuestion.addEventListener("click", function () {
+  editorQuiz.questions.push(createQuestion());
+  elements.quizEditorMessage.textContent = "";
+  renderEditor();
+  elements.questionEditor.lastElementChild.scrollIntoView({ behavior: "smooth", block: "center" });
+});
 elements.newQuiz.addEventListener("click", function () { editorQuiz = createBlankQuiz(); elements.quizEditorMessage.textContent = ""; renderEditor(); });
 elements.createRoom.addEventListener("click", createRoom);
 elements.copyRoomLink.addEventListener("click", copyRoomLink);

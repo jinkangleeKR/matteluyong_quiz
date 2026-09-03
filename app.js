@@ -1,4 +1,4 @@
-import { calculateAnswerScore } from "./quiz-data.js";
+import { calculateAnswerScore, isCorrectAnswer, isShortAnswerQuestion } from "./quiz-data.js";
 import { createQuizClient } from "./realtime-store.js";
 
 const PLAYER_NAME_KEY = "matteluyong.quiz.player-name";
@@ -70,6 +70,8 @@ let isEnteringGame = false;
 let isSendingChat = false;
 let draftQuestionIndex = -1;
 let draftChoice = null;
+let draftText = "";
+let draftWasUserEdited = false;
 
 elements.playerName.value = window.localStorage.getItem(PLAYER_NAME_KEY) || "";
 elements.playerName.addEventListener("input", function () {
@@ -127,7 +129,13 @@ function getResultRevealState() {
 
 function questionForScoring(question, index) {
   const answerKey = room && room.revealedAnswerKey;
-  return Object.assign({}, question, { correctIndex: Array.isArray(answerKey) ? Number(answerKey[index]) : -1 });
+  const key = Array.isArray(answerKey) ? answerKey[index] : null;
+  if (isShortAnswerQuestion(question)) {
+    const acceptedAnswers = Array.isArray(key) ? key : key && Array.isArray(key.acceptedAnswers) ? key.acceptedAnswers : [];
+    return Object.assign({}, question, { type: "short-answer", acceptedAnswers: acceptedAnswers });
+  }
+  const correctIndex = typeof key === "number" ? key : key && Number.isFinite(Number(key.correctIndex)) ? Number(key.correctIndex) : -1;
+  return Object.assign({}, question, { type: "multiple-choice", correctIndex: correctIndex });
 }
 
 function getScore(quiz) {
@@ -137,7 +145,7 @@ function getScore(quiz) {
     const scoredQuestion = questionForScoring(question, index);
     const gained = calculateAnswerScore(ownAnswers[String(index)], scoredQuestion, room, index);
     total += gained;
-    if (gained > 0) { correct += 1; }
+    if (isCorrectAnswer(ownAnswers[String(index)], scoredQuestion)) { correct += 1; }
   });
   return { total: total, correct: correct };
 }
@@ -187,8 +195,15 @@ function renderQuestion(phase) {
   elements.questionText.textContent = phase.question.prompt;
   elements.answerOptions.replaceChildren();
   const submitted = ownAnswers[String(phase.questionIndex)];
-  const isChanging = submitted && draftChoice !== submitted.choice;
-  elements.submitAnswer.disabled = draftChoice === null || isSubmittingAnswer || Boolean(submitted && !isChanging);
+  const shortAnswer = isShortAnswerQuestion(phase.question);
+  if (submitted && !draftWasUserEdited) {
+    if (shortAnswer && !draftText) { draftText = String(submitted.text || ""); }
+    if (!shortAnswer && draftChoice === null && Number.isFinite(Number(submitted.choice))) { draftChoice = Number(submitted.choice); }
+  }
+  const hasDraftAnswer = shortAnswer ? Boolean(draftText.trim()) : draftChoice !== null;
+  const normalizeText = function (value) { return String(value || "").trim().toLocaleLowerCase("ko-KR").replace(/\s+/g, ""); };
+  const isChanging = submitted && (shortAnswer ? normalizeText(draftText) !== normalizeText(submitted.text) : draftChoice !== submitted.choice);
+  elements.submitAnswer.disabled = !hasDraftAnswer || isSubmittingAnswer || Boolean(submitted && !isChanging);
   elements.submitAnswer.textContent = submitted ? (isChanging ? "변경한 답 제출하기" : "제출한 답") : "답안 제출하기";
   elements.answerMessage.textContent = isSubmittingAnswer
     ? "답안을 제출하는 중이에요…"
@@ -196,9 +211,41 @@ function renderQuestion(phase) {
       ? "새 답을 골랐어요. 제출 버튼을 눌러 변경을 확정하세요."
       : submitted
         ? "답안을 제출했습니다. 다른 답을 골라 다시 제출하면 변경할 수 있어요."
-        : draftChoice !== null
-          ? "선택한 답을 제출 버튼으로 확정해 주세요."
-          : "답을 고른 뒤 제출 버튼을 눌러 확정해 주세요.";
+        : hasDraftAnswer
+          ? (shortAnswer ? "입력한 답을 제출 버튼으로 확정해 주세요." : "선택한 답을 제출 버튼으로 확정해 주세요.")
+          : (shortAnswer ? "정답을 입력한 뒤 제출 버튼을 눌러 확정해 주세요." : "답을 고른 뒤 제출 버튼을 눌러 확정해 주세요.");
+
+  if (shortAnswer) {
+    const answerField = document.createElement("label");
+    const answerLabel = document.createElement("span");
+    const answerInput = document.createElement("input");
+    answerField.className = "short-answer-field";
+    answerLabel.textContent = "주관식 정답";
+    answerInput.type = "text";
+    answerInput.maxLength = 120;
+    answerInput.autocomplete = "off";
+    answerInput.placeholder = "정답을 입력하세요";
+    answerInput.value = draftText;
+    answerInput.disabled = isSubmittingAnswer;
+    answerInput.addEventListener("input", function () {
+      draftText = answerInput.value;
+      draftWasUserEdited = true;
+      const currentText = draftText.trim();
+      const changing = submitted && normalizeText(currentText) !== normalizeText(submitted.text);
+      elements.submitAnswer.disabled = !currentText || isSubmittingAnswer || Boolean(submitted && !changing);
+      elements.submitAnswer.textContent = submitted ? (changing ? "변경한 답 제출하기" : "제출한 답") : "답안 제출하기";
+      elements.answerMessage.textContent = !currentText
+        ? "정답을 입력한 뒤 제출 버튼을 눌러 확정해 주세요."
+        : submitted && !changing
+          ? "답안을 제출했습니다. 다른 답을 입력해 다시 제출하면 변경할 수 있어요."
+          : submitted
+            ? "새 답을 입력했어요. 제출 버튼을 눌러 변경을 확정하세요."
+            : "입력한 답을 제출 버튼으로 확정해 주세요.";
+    });
+    answerField.append(answerLabel, answerInput);
+    elements.answerOptions.append(answerField);
+    return;
+  }
 
   phase.question.options.forEach(function (option, index) {
     const button = document.createElement("button");
@@ -214,6 +261,7 @@ function renderQuestion(phase) {
     button.addEventListener("click", function () {
       if (!isSubmittingAnswer) {
         draftChoice = index;
+        draftWasUserEdited = true;
         renderedScreen = "";
         render();
       }
@@ -258,7 +306,7 @@ function getFinalLeaderboard(quiz) {
       if (!participant.name && answer.playerName) { name = answer.playerName; }
       const scoredQuestion = questionForScoring(question, index);
       score += calculateAnswerScore(answer, scoredQuestion, room, index);
-      if (answer.choice === scoredQuestion.correctIndex) { correct += 1; }
+      if (isCorrectAnswer(answer, scoredQuestion)) { correct += 1; }
     });
     return { id: id, name: name, score: score, correct: correct };
   }).sort(function (first, second) {
@@ -293,9 +341,13 @@ function syncDraft(phase) {
   if (phase.state !== "question") {
     draftQuestionIndex = -1;
     draftChoice = null;
+    draftText = "";
+    draftWasUserEdited = false;
   } else if (draftQuestionIndex !== phase.questionIndex) {
     draftQuestionIndex = phase.questionIndex;
     draftChoice = null;
+    draftText = "";
+    draftWasUserEdited = false;
   }
 }
 
@@ -416,7 +468,7 @@ function render() {
   syncFinalRankingSubscriptions(phase, resultState);
   const screen = kickInfo ? "kicked" : !ownLobbyEntry ? "entry" : phase.state === "question" ? "question" : phase.state === "finished" ? "finished" : "waiting";
   const answer = phase.state === "question" ? ownAnswers[String(phase.questionIndex)] : null;
-  const key = [room && room.id, screen, phase.state, phase.questionIndex, resultState.state, resultState.count || "", answer && answer.choice, draftChoice, isSubmittingAnswer, isEnteringGame].join("/");
+  const key = [room && room.id, screen, phase.state, phase.questionIndex, resultState.state, resultState.count || "", answer && answer.choice, answer && answer.text, draftChoice, isSubmittingAnswer, isEnteringGame].join("/");
   if (key !== renderedScreen) {
     renderedScreen = key;
     if (screen === "entry") { renderEntry(phase); }
@@ -455,13 +507,17 @@ async function enterGame() {
 async function submitAnswer() {
   const phase = getPhase();
   const submitted = ownAnswers[String(phase.questionIndex)];
-  if (phase.state !== "question" || draftChoice === null || isSubmittingAnswer || !ownLobbyEntry) { return; }
-  if (submitted && submitted.choice === draftChoice) { return; }
+  const shortAnswer = phase.state === "question" && isShortAnswerQuestion(phase.question);
+  const text = draftText.trim();
+  if (phase.state !== "question" || isSubmittingAnswer || !ownLobbyEntry || (shortAnswer ? !text : draftChoice === null)) { return; }
+  if (submitted && (shortAnswer ? text === String(submitted.text || "").trim() : submitted.choice === draftChoice)) { return; }
   isSubmittingAnswer = true;
   renderedScreen = "";
   render();
   try {
-    await client.submitRoomAnswer(roomId, { questionIndex: phase.questionIndex, choice: draftChoice, playerName: ownLobbyEntry.name || "참가자" });
+    await client.submitRoomAnswer(roomId, shortAnswer
+      ? { questionIndex: phase.questionIndex, answerType: "short-answer", text: text, playerName: ownLobbyEntry.name || "참가자" }
+      : { questionIndex: phase.questionIndex, answerType: "multiple-choice", choice: draftChoice, playerName: ownLobbyEntry.name || "참가자" });
   } catch (error) {
     elements.answerMessage.textContent = "답안 제출에 실패했어요. 연결 상태를 확인해 주세요.";
   } finally {

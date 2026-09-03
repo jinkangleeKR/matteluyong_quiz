@@ -1,10 +1,8 @@
 # 현장 퀴즈
 
-## 관리자 · 참가자 한 화면 테스트
+## 데모
 
-GitHub README 안에서는 보안상 실제 브라우저 화면을 직접 실행할 수 없습니다. 대신 아래 링크에서 관리자와 참가자 화면을 한 창에 나란히 띄워 바로 테스트할 수 있습니다.
-
-### [한 화면 테스트 열기](https://jinkangleekr.github.io/matteluyong_quiz/preview.html)
+### [데모 열기](https://jinkangleekr.github.io/matteluyong_quiz/preview.html)
 
 1. 왼쪽 관리자 화면에서 퀴즈를 만들고 저장합니다.
 2. **새 게임방 · QR 만들기**를 누르면 오른쪽 참가자 화면이 같은 게임방에 자동 연결됩니다.
