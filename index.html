@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="현장 퀴즈에 참여하는 공식 접속 페이지입니다."
+      content="QR 코드로 접속하는 실시간 현장 퀴즈 참가 페이지입니다."
     />
     <title>현장 퀴즈 | 참가 페이지</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -21,38 +21,74 @@
       <div class="glow glow-one" aria-hidden="true"></div>
       <div class="glow glow-two" aria-hidden="true"></div>
 
-      <section class="quiz-card" aria-labelledby="page-title">
-        <p class="eyebrow"><span></span> LIVE QUIZ</p>
-        <div class="icon-wrap" aria-hidden="true">
-          <svg viewBox="0 0 64 64" role="img">
-            <path d="M32 7 38.7 21l15.3 2.2-11.1 10.8 2.6 15.2L32 42l-13.5 7.2L21.1 34 10 23.2 25.3 21 32 7Z" />
-          </svg>
+      <section class="quiz-card participant-card" aria-labelledby="page-title">
+        <div class="card-topline">
+          <p class="eyebrow"><span></span> LIVE QUIZ</p>
+          <span id="connection-badge" class="mode-badge">연결 중</span>
         </div>
-        <h1 id="page-title">퀴즈에 참가할 준비가 되었나요?</h1>
-        <p class="intro">
-          진행자가 퀴즈를 시작하면 이곳에서 바로 문제를 풀 수 있어요.
-        </p>
 
-        <div class="status-panel" role="status" aria-live="polite">
-          <span class="status-dot" aria-hidden="true"></span>
-          <div>
-            <p class="status-label">현재 상태</p>
-            <p id="quiz-status" class="status-text">퀴즈 시작을 기다리고 있어요</p>
+        <div id="connection-notice" class="connection-notice" hidden></div>
+
+        <div id="waiting-view">
+          <div class="icon-wrap" aria-hidden="true">
+            <svg viewBox="0 0 64 64">
+              <path d="M32 7 38.7 21l15.3 2.2-11.1 10.8 2.6 15.2L32 42l-13.5 7.2L21.1 34 10 23.2 25.3 21 32 7Z" />
+            </svg>
+          </div>
+          <h1 id="page-title">퀴즈를 기다리고 있어요</h1>
+          <p id="waiting-message" class="intro">
+            진행자가 시작하면 첫 번째 문제가 자동으로 열립니다.
+          </p>
+
+          <label class="name-field" for="player-name">
+            <span>참가자 이름</span>
+            <input id="player-name" type="text" maxlength="20" autocomplete="nickname" placeholder="이름 또는 닉네임" />
+          </label>
+
+          <div class="status-panel" role="status" aria-live="polite">
+            <span class="status-dot" aria-hidden="true"></span>
+            <div>
+              <p class="status-label">현재 상태</p>
+              <p id="quiz-status" class="status-text">퀴즈 시작을 기다리고 있어요</p>
+            </div>
           </div>
         </div>
 
-        <button id="enter-quiz" class="enter-button" type="button" disabled>
-          퀴즈 입장하기
-          <span aria-hidden="true">→</span>
-        </button>
-        <p id="guide-message" class="guide-message">
-          잠시만 기다려 주세요. 시작되면 버튼이 활성화됩니다.
-        </p>
+        <div id="question-view" hidden aria-live="polite">
+          <div class="question-meta">
+            <span id="question-count" class="question-count">문제 1 / 4</span>
+            <span id="timer-text" class="timer-text">00:00</span>
+          </div>
+          <div class="timer-track" aria-label="남은 시간">
+            <div id="timer-bar" class="timer-bar"></div>
+          </div>
+          <p id="timer-guide" class="timer-guide">남은 시간 안에 답을 하나만 선택해 주세요.</p>
+          <h1 id="question-text" class="question-title"></h1>
+          <div id="answer-options" class="answer-options" role="group" aria-label="답안 선택"></div>
+          <p id="answer-message" class="answer-message"></p>
+        </div>
+
+        <div id="finished-view" hidden>
+          <div class="icon-wrap finish-icon" aria-hidden="true">
+            <svg viewBox="0 0 64 64">
+              <path d="M32 7 38.7 21l15.3 2.2-11.1 10.8 2.6 15.2L32 42l-13.5 7.2L21.1 34 10 23.2 25.3 21 32 7Z" />
+            </svg>
+          </div>
+          <p class="eyebrow result-eyebrow">QUIZ COMPLETE</p>
+          <h1>퀴즈가 종료됐어요</h1>
+          <p class="intro">참여해 주셔서 고마워요.</p>
+          <div class="score-panel">
+            <p>내 점수</p>
+            <strong id="total-score">0</strong>
+            <span>점</span>
+          </div>
+          <p id="result-detail" class="guide-message"></p>
+        </div>
       </section>
 
-      <p class="footer-note">이 페이지를 닫지 말고 잠시 기다려 주세요.</p>
+      <p class="footer-note">문제는 모든 참가자에게 같은 시간에 자동으로 바뀝니다.</p>
     </main>
 
-    <script src="app.js"></script>
+    <script type="module" src="app.js"></script>
   </body>
 </html>

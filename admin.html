@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>현장 퀴즈 | 관리자</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Outfit:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="admin-body">
+    <main class="admin-shell">
+      <header class="admin-header">
+        <div>
+          <p class="eyebrow"><span></span> QUIZ CONTROL</p>
+          <h1>퀴즈 관리자</h1>
+        </div>
+        <a class="text-link" href="./">참가자 화면 보기 ↗</a>
+      </header>
+
+      <section id="admin-notice" class="connection-notice admin-notice" hidden></section>
+
+      <section id="admin-login" class="admin-section login-section" hidden>
+        <h2>관리자 로그인</h2>
+        <p>Firebase에 등록한 관리자 계정으로 로그인하세요.</p>
+        <form id="login-form" class="login-form">
+          <label>
+            <span>이메일</span>
+            <input id="admin-email" type="email" autocomplete="username" required />
+          </label>
+          <label>
+            <span>비밀번호</span>
+            <input id="admin-password" type="password" autocomplete="current-password" required />
+          </label>
+          <button class="primary-button" type="submit">로그인</button>
+          <p id="login-message" class="form-message" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <div id="admin-dashboard" class="admin-grid" hidden>
+        <section class="admin-section setup-section">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">GAME SETUP</p>
+              <h2>퀴즈 설정</h2>
+            </div>
+            <span id="admin-mode-badge" class="mode-badge">연결 중</span>
+          </div>
+
+          <label class="field-label" for="quiz-version">
+            <span>퀴즈 버전</span>
+            <select id="quiz-version"></select>
+          </label>
+          <p id="version-description" class="field-help"></p>
+
+          <div class="settings-row">
+            <label class="field-label" for="question-duration">
+              <span>문제당 시간 (초)</span>
+              <input id="question-duration" type="number" min="5" max="600" value="20" required />
+            </label>
+            <label class="field-label" for="base-points">
+              <span>정답 점수</span>
+              <input id="base-points" type="number" min="0" max="10000" value="100" required />
+            </label>
+            <label class="field-label" for="speed-points">
+              <span>최대 시간 점수</span>
+              <input id="speed-points" type="number" min="0" max="10000" value="100" required />
+            </label>
+          </div>
+
+          <div class="score-explanation">
+            정답을 맞히면 <strong>정답 점수 + 남은 시간에 비례한 시간 점수</strong>를 받습니다.
+            오답 또는 미응답은 0점입니다.
+          </div>
+
+          <div class="admin-actions">
+            <button id="start-game" class="primary-button" type="button">5초 뒤 퀴즈 시작</button>
+            <button id="stop-game" class="secondary-button" type="button">즉시 종료</button>
+            <button id="reset-game" class="quiet-button" type="button">대기 화면으로 초기화</button>
+          </div>
+          <p id="admin-action-message" class="form-message" aria-live="polite"></p>
+        </section>
+
+        <section class="admin-section monitor-section">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">LIVE MONITOR</p>
+              <h2>진행 현황</h2>
+            </div>
+            <span id="game-state-badge" class="state-badge waiting">대기 중</span>
+          </div>
+
+          <div class="monitor-main">
+            <p id="monitor-title">퀴즈 시작을 기다리고 있어요</p>
+            <strong id="monitor-timer">--:--</strong>
+            <p id="monitor-subtitle">시작 버튼을 누르면 5초 후 모든 참가자에게 첫 문제가 열립니다.</p>
+          </div>
+          <div class="timer-track admin-timer-track"><div id="monitor-timer-bar" class="timer-bar"></div></div>
+          <div class="monitor-stats">
+            <div><span>문제</span><strong id="monitor-question">- / -</strong></div>
+            <div><span>응답</span><strong id="answer-count">0</strong></div>
+          </div>
+        </section>
+
+        <section class="admin-section questions-section">
+          <div class="section-heading">
+            <div>
+              <p class="section-kicker">QUESTION PLAN</p>
+              <h2>선택한 퀴즈</h2>
+            </div>
+          </div>
+          <ol id="question-plan" class="question-plan"></ol>
+        </section>
+      </div>
+    </main>
+
+    <script type="module" src="admin.js"></script>
+  </body>
+</html>
